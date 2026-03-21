@@ -190,12 +190,12 @@ def run_portfolio_bot():
                     # 3. Execute Orders
                     if signal == "BUY":
                         print(f"Executing BUY for {trade_qty:.2f} {coin}...")
-                        # place_order(coin, "BUY", trade_qty) 
+                        place_order(coin, "BUY", trade_qty) 
                         positions[coin] += trade_qty  
                         
                     elif signal == "SELL":
                         print(f"Executing SELL for {trade_qty:.2f} {coin}...")
-                        # place_order(coin, "SELL", trade_qty) 
+                        place_order(coin, "SELL", trade_qty) 
                         positions[coin] -= trade_qty
                 
                 # Sleep briefly to respect API rate limits
