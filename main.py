@@ -98,8 +98,8 @@ def run_portfolio_bot():
                 ema_s[coin] = price * k_s + ema_s[coin] * (1 - k_s)
                 hist[coin].append(price)
                 ticks[coin] += 1
-                if len(hist[coin]) > SLOW * 2:
-                    hist[coin] = hist[coin][-SLOW:]
+                if len(hist[coin]) > SLOW * 5:
+                    hist[coin] = hist[coin][-(VOL_WIN + 5):]
 
                 signal = "HOLD"
 
