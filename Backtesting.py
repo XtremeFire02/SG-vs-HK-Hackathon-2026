@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 
 
-def backtest_breakout(period="7d", interval="1m", capital=50000.0):
+def backtest_breakout(period="7d", interval="1m", capital=50000.0, min_vol=0.0001):
     """
     Volatility Breakout + Trailing Stop strategy.
 
@@ -54,7 +54,7 @@ def backtest_breakout(period="7d", interval="1m", capital=50000.0):
     RISK_PER_TRADE = 0.01   # risk 1% of equity per trade
     MAX_ALLOC      = 0.25   # never put more than 25% in one coin
     STOP_MULT      = 2.0    # trailing stop = peak - STOP_MULT * ATR
-    MIN_VOL        = 0.0005 # minimum ATR/price to allow entry (0.05%)
+    MIN_VOL        = min_vol # minimum ATR/price to allow entry
     PRICE_OFFSET   = 0.0002 # slippage
     COOLDOWN       = 20     # bars after a stop-out before re-entry for same coin
 
@@ -270,27 +270,63 @@ def backtest_breakout(period="7d", interval="1m", capital=50000.0):
 
 
 if __name__ == "__main__":
-    print(">>> BACKTEST 1: Last 7 days (1-min bars) -- the flat market test")
-    print(">>> A good strategy should have ~0 trades here.\n")
-    r1 = backtest_breakout(period="7d", interval="1m")
+    # ── MIN_VOL Parameter Sweep ──
+    MIN_VOL_VALUES = [0.0, 0.00005, 0.0001, 0.00015, 0.0002, 0.0003, 0.0005, 0.001]
+    PERIODS = [
+        ("7d/1m",  "7d",  "1m"),
+        ("1mo/5m", "1mo", "5m"),
+        ("60d/1h", "60d", "1h"),
+    ]
 
-    print("\n\n>>> BACKTEST 2: Last 1 month (5-min bars)")
-    print(">>> Mixed regime -- where real alpha shows up.\n")
-    r2 = backtest_breakout(period="1mo", interval="5m")
+    # results[min_vol][period_label] = backtest result dict
+    results = {}
 
-    print("\n\n>>> BACKTEST 3: Last 60 days (1-hour bars)")
-    print(">>> Full cycle for robust Sharpe estimate.\n")
-    r3 = backtest_breakout(period="60d", interval="1h")
+    for mv in MIN_VOL_VALUES:
+        results[mv] = {}
+        print(f"\n{'#' * 62}")
+        print(f"  TESTING MIN_VOL = {mv}")
+        print(f"{'#' * 62}\n")
+        for label, period, interval in PERIODS:
+            print(f">>> {label} with MIN_VOL={mv}")
+            r = backtest_breakout(period=period, interval=interval, min_vol=mv)
+            results[mv][label] = r
 
-    # Summary
-    print("\n" + "=" * 62)
-    print("  SUMMARY ACROSS ALL PERIODS")
-    print("=" * 62)
-    print(f"  {'Period':<12} {'Return':>10} {'Sharpe':>10} {'MaxDD':>10} {'Trades':>8} {'WinRate':>8} {'PF':>8}")
-    print(f"  {'-'*12} {'-'*10} {'-'*10} {'-'*10} {'-'*8} {'-'*8} {'-'*8}")
-    for label, r in [("7d/1m", r1), ("1mo/5m", r2), ("60d/1h", r3)]:
-        if r:
-            print(f"  {label:<12} {r['total_return_pct']:>+9.2f}% {r['sharpe']:>10.2f} "
-                  f"{r['max_drawdown_pct']:>+9.2f}% {r['total_trades']:>8} "
-                  f"{r['win_rate']:>7.1f}% {r['profit_factor']:>8.2f}")
-    print("=" * 62)
+    # ── Comparison Table ──
+    print("\n\n" + "=" * 90)
+    print("  MIN_VOL PARAMETER SWEEP -- COMPARISON")
+    print("=" * 90)
+
+    for label, _, _ in PERIODS:
+        print(f"\n  --- {label} ---")
+        print(f"  {'MIN_VOL':>10} {'Return':>10} {'Sharpe':>10} {'MaxDD':>10} {'Trades':>8} {'WinRate':>8} {'PF':>8}")
+        print(f"  {'-'*10} {'-'*10} {'-'*10} {'-'*10} {'-'*8} {'-'*8} {'-'*8}")
+        for mv in MIN_VOL_VALUES:
+            r = results[mv].get(label)
+            if r:
+                print(f"  {mv:>10.5f} {r['total_return_pct']:>+9.2f}% {r['sharpe']:>10.2f} "
+                      f"{r['max_drawdown_pct']:>+9.2f}% {r['total_trades']:>8} "
+                      f"{r['win_rate']:>7.1f}% {r['profit_factor']:>8.2f}")
+            else:
+                print(f"  {mv:>10.5f}   NO DATA")
+
+    # ── Best MIN_VOL by average Sharpe ──
+    print(f"\n  --- AVERAGE SHARPE ACROSS ALL PERIODS ---")
+    print(f"  {'MIN_VOL':>10} {'Avg Sharpe':>12} {'Avg Return':>12} {'Avg MaxDD':>12}")
+    print(f"  {'-'*10} {'-'*12} {'-'*12} {'-'*12}")
+    best_mv, best_avg = None, -999
+    for mv in MIN_VOL_VALUES:
+        sharpes = [results[mv][l]["sharpe"] for l, _, _ in PERIODS if results[mv].get(l)]
+        rets = [results[mv][l]["total_return_pct"] for l, _, _ in PERIODS if results[mv].get(l)]
+        dds = [results[mv][l]["max_drawdown_pct"] for l, _, _ in PERIODS if results[mv].get(l)]
+        if sharpes:
+            avg_s = sum(sharpes) / len(sharpes)
+            avg_r = sum(rets) / len(rets)
+            avg_d = sum(dds) / len(dds)
+            marker = ""
+            if avg_s > best_avg:
+                best_avg = avg_s
+                best_mv = mv
+            print(f"  {mv:>10.5f} {avg_s:>+11.2f} {avg_r:>+11.2f}% {avg_d:>+11.2f}%")
+
+    print(f"\n  >>> BEST MIN_VOL = {best_mv} (avg Sharpe = {best_avg:+.2f})")
+    print("=" * 90)

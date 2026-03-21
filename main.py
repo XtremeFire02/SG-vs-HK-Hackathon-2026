@@ -64,14 +64,14 @@ def run_breakout_bot():
 
     # ── Parameters ──
     UNIVERSE       = ["BTC", "ETH", "SOL", "BNB"]
-    ENTRY_LB       = 96     # Donchian entry channel lookback (ticks)
+    ENTRY_LB       = 96     # Donchian entry channel lookback (~48 min at 30s ticks)
     EXIT_LB        = 48     # Donchian exit channel lookback (tighter)
     ATR_WIN        = 20     # ATR window
     TOP_K          = 2      # max simultaneous positions
     RISK_PER_TRADE = 0.01   # risk 1% of equity per trade
     MAX_ALLOC      = 0.25   # never put more than 25% equity in one coin
     STOP_MULT      = 2.0    # trailing stop = peak - STOP_MULT * ATR
-    MIN_VOL        = 0.0005 # minimum ATR/price to allow entry (0.05%)
+    MIN_VOL        = 0.00005 # minimum ATR/price to allow entry — optimized via sweep
     PRICE_OFFSET   = 0.0002 # 0.02% limit price offset
     COOLDOWN       = 20     # ticks after stop-out before re-entry (~10 min)
     MIN_ORDER_USD  = 50.00  # minimum order notional
