@@ -1,0 +1,5 @@
+So far this model uses a standard mean reversion model with rolling linear regression to account for drift over a 60 period lookback window to calculate our best fit line. Then we calculate the residuals and calculate the Z-score. 
+
+Another feature is that this bot also has position management where we buy or sell more based on the extent of the rise or dip. 
+
+Note that I created a .env file that is git ignored so the API keys wont leak. 
