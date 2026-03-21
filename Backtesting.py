@@ -5,83 +5,292 @@ import numpy as np
 import pandas as pd
 
 
-def backtest(coin, fast=20, slow=60, vol_window=20, target_vol=0.0002,
-             max_scale=1.5, alloc=0.20, capital=50000):
+def backtest_breakout(period="7d", interval="1m", capital=50000.0):
     """
-    Backtest: EMA crossover + volatility scaling.
-    Returns (sharpe, total_return_pct, max_drawdown_pct).
-    """
-    df = yf.download(f"{coin}-USD", period="7d", interval="1m", progress=False)
-    if df.empty:
-        return 0.0, 0.0, 0.0
+    Volatility Breakout + Trailing Stop strategy.
 
-    prices = df['Close'].values.flatten().astype(float)
+    Why this works:
+      - In flat markets, price NEVER breaks the channel -> 0 trades -> 0 loss
+      - In trending markets, breakouts catch the move early and ride it
+      - Trailing stop lets winners run, cuts losers mechanically
+      - Volatility filter adds a second gate: even if price pokes above
+        the channel in low vol, we don't enter (it's noise, not signal)
+      - Risk-based sizing: every trade risks the same % of equity
+
+    Signal:
+      1. Donchian channel: ENTRY_LB-bar high/low
+      2. BUY when price > channel high AND vol filter passes
+      3. EXIT when price < trailing stop (peak - STOP_MULT * ATR)
+         OR price < EXIT_LB-bar low (channel exit)
+      4. Cross-sectional: only hold TOP_K positions, prefer strongest breakouts
+    """
+    UNIVERSE = ["BTC", "ETH", "SOL", "BNB"]
+
+    print("Downloading price data...")
+    price_data = {}
+    for coin in UNIVERSE:
+        df = yf.download(f"{coin}-USD", period=period, interval=interval, progress=False)
+        if df.empty:
+            print(f"  !! No data for {coin}, skipping")
+            continue
+        price_data[coin] = df["Close"].values.flatten().astype(float)
+        print(f"  {coin}: {len(price_data[coin])} bars")
+
+    if not price_data:
+        print("No data available.")
+        return None
+
+    min_len = min(len(v) for v in price_data.values())
+    for coin in list(price_data.keys()):
+        price_data[coin] = price_data[coin][-min_len:]
+    UNIVERSE = list(price_data.keys())
+    print(f"  Aligned to {min_len} bars across {len(UNIVERSE)} coins\n")
+
+    # ── Parameters ──
+    ENTRY_LB       = 96     # Donchian entry channel lookback
+    EXIT_LB        = 48     # Donchian exit channel lookback (tighter)
+    ATR_WIN        = 20     # ATR window
+    TOP_K          = 2      # max simultaneous positions
+    RISK_PER_TRADE = 0.01   # risk 1% of equity per trade
+    MAX_ALLOC      = 0.25   # never put more than 25% in one coin
+    STOP_MULT      = 2.0    # trailing stop = peak - STOP_MULT * ATR
+    MIN_VOL        = 0.0005 # minimum ATR/price to allow entry (0.05%)
+    PRICE_OFFSET   = 0.0002 # slippage
+    COOLDOWN       = 20     # bars after a stop-out before re-entry for same coin
+
+    # ── State ──
+    pos = {c: 0.0 for c in UNIVERSE}
+    peak_price = {c: 0.0 for c in UNIVERSE}
+    entry_price = {}
     cash = capital
-    position = 0.0
+    current_longs = set()
+    last_exit = {c: -COOLDOWN for c in UNIVERSE}  # cooldown per coin
+
     equity_curve = []
+    trade_log = []
+    signals_log = []
 
-    k_f = 2.0 / (fast + 1)
-    k_s = 2.0 / (slow + 1)
-    ema_f = prices[0]
-    ema_s = prices[0]
+    warmup = max(ENTRY_LB, EXIT_LB, ATR_WIN) + 1
 
-    for i, price in enumerate(prices):
-        ema_f = price * k_f + ema_f * (1 - k_f)
-        ema_s = price * k_s + ema_s * (1 - k_s)
+    for i in range(min_len):
+        prices_now = {c: price_data[c][i] for c in UNIVERSE}
 
-        if i >= slow:
-            total_eq = cash + position * price
-            momentum = ema_f > ema_s
+        # Update trailing peaks
+        for c in current_longs:
+            if prices_now[c] > peak_price[c]:
+                peak_price[c] = prices_now[c]
 
-            # Vol scaling
-            vol_scalar = 1.0
-            if i >= vol_window + 1:
-                rets = [(prices[j] - prices[j-1]) / prices[j-1]
-                        for j in range(i - vol_window, i)]
-                avg = sum(rets) / len(rets)
-                vol = (sum((r - avg)**2 for r in rets) / (len(rets) - 1)) ** 0.5
-                vol_scalar = min(target_vol / max(vol, 1e-10), max_scale)
+        # Mark equity
+        coin_val = sum(pos[c] * prices_now[c] for c in UNIVERSE)
+        equity = cash + coin_val
+        equity_curve.append(equity)
 
-            base_qty = total_eq * alloc / price
-            target_qty = base_qty * vol_scalar if momentum else 0.0
+        if i < warmup:
+            continue
 
-            trade_qty = target_qty - position
-            if abs(trade_qty) * price > 1.0:
-                cash -= trade_qty * price
-                position += trade_qty
+        # ── Compute indicators ──
+        atr = {}
+        chan_high = {}
+        chan_low = {}
+        vol_pct = {}
 
-        equity_curve.append(cash + position * price)
+        for c in UNIVERSE:
+            ph = price_data[c]
 
+            # ATR (average absolute move)
+            diffs = [abs(ph[j] - ph[j-1]) for j in range(i - ATR_WIN + 1, i + 1)]
+            atr[c] = sum(diffs) / len(diffs) if diffs else 1e-10
+
+            # Donchian channels
+            chan_high[c] = max(ph[i - ENTRY_LB:i])  # exclude current bar
+            chan_low[c] = min(ph[i - EXIT_LB:i])
+
+            # Volatility as % of price
+            vol_pct[c] = atr[c] / prices_now[c] if prices_now[c] > 0 else 0
+
+        # ── Check exits first ──
+        for c in list(current_longs):
+            if pos[c] <= 0:
+                current_longs.discard(c)
+                continue
+
+            stop_level = peak_price[c] - STOP_MULT * atr[c]
+            exit_channel = chan_low[c]
+            exit_level = max(stop_level, exit_channel)
+
+            if prices_now[c] <= exit_level:
+                reason = "STOP" if prices_now[c] <= stop_level else "CHAN-EXIT"
+                fill = prices_now[c] * (1 - PRICE_OFFSET)
+                pnl_trade = (fill - entry_price.get(c, fill)) / entry_price.get(c, fill)
+                cash += pos[c] * fill
+                trade_log.append({
+                    "bar": i, "coin": c, "side": f"SELL-{reason}",
+                    "qty": pos[c], "price": prices_now[c], "fill": fill,
+                    "pnl": pnl_trade, "equity": equity,
+                })
+                pos[c] = 0.0
+                peak_price[c] = 0.0
+                entry_price.pop(c, None)
+                current_longs.discard(c)
+                last_exit[c] = i
+
+        # ── Check entries ──
+        # Find coins breaking out with sufficient vol, not on cooldown
+        breakout_candidates = []
+        for c in UNIVERSE:
+            if c in current_longs:
+                continue
+            if (i - last_exit.get(c, -COOLDOWN)) < COOLDOWN:
+                continue
+            if vol_pct[c] < MIN_VOL:
+                continue
+            if prices_now[c] > chan_high[c]:
+                # Breakout strength = how far above channel
+                strength = (prices_now[c] - chan_high[c]) / atr[c] if atr[c] > 0 else 0
+                breakout_candidates.append((c, strength))
+
+        # Rank by breakout strength, take top slots available
+        breakout_candidates.sort(key=lambda x: x[1], reverse=True)
+        slots = TOP_K - len(current_longs)
+
+        for c, strength in breakout_candidates[:slots]:
+            # Risk-based sizing: risk RISK_PER_TRADE of equity
+            stop_distance = STOP_MULT * atr[c]
+            if stop_distance <= 0:
+                continue
+            qty_by_risk = (equity * RISK_PER_TRADE) / stop_distance
+            # Cap by max allocation
+            qty_by_alloc = (equity * MAX_ALLOC) / prices_now[c]
+            qty = min(qty_by_risk, qty_by_alloc)
+            # Cap by cash
+            fill = prices_now[c] * (1 + PRICE_OFFSET)
+            max_qty = (cash * 0.95) / fill
+            qty = min(qty, max_qty)
+
+            if qty * prices_now[c] < 50:  # min notional
+                continue
+
+            cash -= qty * fill
+            pos[c] = qty
+            entry_price[c] = prices_now[c]
+            peak_price[c] = prices_now[c]
+            current_longs.add(c)
+
+            trade_log.append({
+                "bar": i, "coin": c, "side": "BUY-BREAKOUT",
+                "qty": qty, "price": prices_now[c], "fill": fill,
+                "pnl": 0, "equity": equity,
+            })
+
+    # ── Final equity ──
+    final_prices = {c: price_data[c][-1] for c in UNIVERSE}
+    final_equity = cash + sum(pos[c] * final_prices[c] for c in UNIVERSE)
+
+    # ── Metrics ──
     eq = pd.Series(equity_curve)
     returns = eq.pct_change().dropna()
 
-    if returns.std() == 0:
-        return 0.0, 0.0, 0.0
+    ann_map = {"1m": 525_600, "5m": 105_120, "1h": 8_760, "1d": 365}
+    ann_factor = ann_map.get(interval, 525_600)
 
-    sharpe = (returns.mean() / returns.std()) * np.sqrt(525_600)
-    total_ret = (equity_curve[-1] / capital - 1) * 100
+    if returns.std() == 0 or len(returns) < 2:
+        sharpe = 0.0
+    else:
+        sharpe = (returns.mean() / returns.std()) * np.sqrt(ann_factor)
 
-    peak = eq.expanding().max()
-    max_dd = ((eq - peak) / peak).min() * 100
+    total_ret = (final_equity / capital - 1) * 100
+    peak_eq = eq.expanding().max()
+    max_dd = ((eq - peak_eq) / peak_eq).min() * 100
 
-    return sharpe, total_ret, max_dd
+    # Trade stats
+    sells = [t for t in trade_log if t["side"].startswith("SELL")]
+    wins = [t for t in sells if t["pnl"] > 0]
+    losses = [t for t in sells if t["pnl"] <= 0]
+    win_rate = (len(wins) / len(sells) * 100) if sells else 0.0
+    avg_win = np.mean([t["pnl"] for t in wins]) * 100 if wins else 0.0
+    avg_loss = np.mean([t["pnl"] for t in losses]) * 100 if losses else 0.0
+    profit_factor = (abs(sum(t["pnl"] for t in wins)) /
+                     abs(sum(t["pnl"] for t in losses))) if losses and sum(t["pnl"] for t in losses) != 0 else float('inf')
 
+    # Type breakdown
+    type_counts = {}
+    for t in trade_log:
+        s = t["side"]
+        type_counts[s] = type_counts.get(s, 0) + 1
 
-if __name__ == '__main__':
-    universe = ["BTC", "ETH", "SOL", "BNB"]
-
+    # ── Report ──
     print("=" * 62)
-    print("  VOLATILITY-TARGETED MOMENTUM — 7-DAY BACKTEST")
-    print("  EMA(20,60) + Vol Scaling (target ~15% annual, cap 1.5x)")
+    print("  VOLATILITY BREAKOUT -- BACKTEST RESULTS")
+    print(f"  Period: {period} | Interval: {interval} | Bars: {min_len:,}")
+    print(f"  Params: ENTRY={ENTRY_LB} EXIT={EXIT_LB} STOP={STOP_MULT}xATR "
+          f"MIN_VOL={MIN_VOL:.2%}")
     print("=" * 62)
-    print()
-    print(f"  {'Coin':<6} {'Sharpe':>8} {'Return':>10} {'Max DD':>10}")
-    print(f"  {'-'*6} {'-'*8} {'-'*10} {'-'*10}")
 
-    for coin in universe:
-        s, r, d = backtest(coin)
-        print(f"  {coin:<6} {s:>8.2f} {r:>+9.2f}% {d:>+9.2f}%")
+    print(f"\n  PORTFOLIO METRICS")
+    print(f"  {'-'*50}")
+    print(f"  Starting Capital:   ${capital:>12,.2f}")
+    print(f"  Final Equity:       ${final_equity:>12,.2f}")
+    print(f"  Total Return:       {total_ret:>+11.2f}%")
+    print(f"  Sharpe Ratio:       {sharpe:>12.2f}  (annualized)")
+    print(f"  Max Drawdown:       {max_dd:>+11.2f}%")
+    print(f"  Total Trades:       {len(trade_log):>12,}")
 
-    print()
-    print("  Note: Vol scaling reduces position size during high-volatility")
-    print("  periods and increases it during calm trending markets.")
+    print(f"\n  TRADE QUALITY")
+    print(f"  {'-'*50}")
+    print(f"  Win Rate:           {win_rate:>11.1f}%")
+    print(f"  Avg Win:            {avg_win:>+11.2f}%")
+    print(f"  Avg Loss:           {avg_loss:>+11.2f}%")
+    print(f"  Profit Factor:      {profit_factor:>12.2f}")
+
+    if type_counts:
+        print(f"\n  TRADE BREAKDOWN")
+        print(f"  {'-'*50}")
+        for s, cnt in sorted(type_counts.items(), key=lambda x: -x[1]):
+            print(f"  {s:<20} {cnt:>6}")
+
+    print(f"\n  PER-COIN FINAL POSITION")
+    print(f"  {'-'*50}")
+    for c in UNIVERSE:
+        val = pos[c] * final_prices[c]
+        held = "LONG" if c in current_longs else "FLAT"
+        print(f"  {c:<6} {pos[c]:>12.6f}  ${val:>10,.2f}  {held}")
+    print(f"  {'Cash':<6} {'':>12}  ${cash:>10,.2f}")
+
+    print(f"\n{'=' * 62}")
+
+    return {
+        "sharpe": sharpe,
+        "total_return_pct": total_ret,
+        "max_drawdown_pct": max_dd,
+        "total_trades": len(trade_log),
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "equity_curve": equity_curve,
+    }
+
+
+if __name__ == "__main__":
+    print(">>> BACKTEST 1: Last 7 days (1-min bars) -- the flat market test")
+    print(">>> A good strategy should have ~0 trades here.\n")
+    r1 = backtest_breakout(period="7d", interval="1m")
+
+    print("\n\n>>> BACKTEST 2: Last 1 month (5-min bars)")
+    print(">>> Mixed regime -- where real alpha shows up.\n")
+    r2 = backtest_breakout(period="1mo", interval="5m")
+
+    print("\n\n>>> BACKTEST 3: Last 60 days (1-hour bars)")
+    print(">>> Full cycle for robust Sharpe estimate.\n")
+    r3 = backtest_breakout(period="60d", interval="1h")
+
+    # Summary
+    print("\n" + "=" * 62)
+    print("  SUMMARY ACROSS ALL PERIODS")
+    print("=" * 62)
+    print(f"  {'Period':<12} {'Return':>10} {'Sharpe':>10} {'MaxDD':>10} {'Trades':>8} {'WinRate':>8} {'PF':>8}")
+    print(f"  {'-'*12} {'-'*10} {'-'*10} {'-'*10} {'-'*8} {'-'*8} {'-'*8}")
+    for label, r in [("7d/1m", r1), ("1mo/5m", r2), ("60d/1h", r3)]:
+        if r:
+            print(f"  {label:<12} {r['total_return_pct']:>+9.2f}% {r['sharpe']:>10.2f} "
+                  f"{r['max_drawdown_pct']:>+9.2f}% {r['total_trades']:>8} "
+                  f"{r['win_rate']:>7.1f}% {r['profit_factor']:>8.2f}")
+    print("=" * 62)
