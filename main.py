@@ -1,6 +1,3 @@
-import requests
-import hashlib
-import hmac
 import time
 import os
 
@@ -14,92 +11,7 @@ API_KEY = "gTXINb11mK9CQimJU3U9fZ4DsNCDyQhsa33TPHC3PglMJHlG8J9NkkzGF1SyabvJ"
 SECRET = "wa5wyNtXuwj482sSAjhnDGwSLEYsPV1qqtWbwNqTcVsI0KM1PcsVFRcdLaOjLYt7"
 BASE_URL = "https://mock-api.roostoo.com"
 
-# ─── API LAYER ────────────────────────────────────────────────
-
-def _sign(params):
-    query = '&'.join(f"{k}={params[k]}" for k in sorted(params))
-    return hmac.new(SECRET.encode(), query.encode(), hashlib.sha256).hexdigest()
-
-def _auth(params):
-    return {"RST-API-KEY": API_KEY, "MSG-SIGNATURE": _sign(params)}
-
-def get_server_time():
-    try:
-        return requests.get(f"{BASE_URL}/v3/serverTime").json()
-    except Exception:
-        return None
-
-def get_ex_info():
-    try:
-        return requests.get(f"{BASE_URL}/v3/exchangeInfo").json()
-    except Exception:
-        return None
-
-def get_ticker(pair=None):
-    try:
-        p = {"timestamp": int(time.time() * 1000)}
-        if pair:
-            p["pair"] = pair
-        return requests.get(f"{BASE_URL}/v3/ticker", params=p).json()
-    except Exception:
-        return None
-
-def get_balance():
-    try:
-        p = {"timestamp": int(time.time() * 1000)}
-        return requests.get(f"{BASE_URL}/v3/balance", params=p, headers=_auth(p)).json()
-    except Exception:
-        return None
-
-def place_order(coin, side, qty, price=None):
-    """Place an order. LIMIT if price given (half the fee), else MARKET."""
-    try:
-        p = {
-            "timestamp": int(time.time() * 1000),
-            "pair": f"{coin}/USD",
-            "side": side,
-            "quantity": round(qty, 6),
-        }
-        if price:
-            p["type"] = "LIMIT"
-            p["price"] = price
-        else:
-            p["type"] = "MARKET"
-        r = requests.post(
-            f"{BASE_URL}/v3/place_order",
-            data=p,
-            headers={"RST-API-KEY": API_KEY, "MSG-SIGNATURE": _sign({"timestamp": p["timestamp"]})}
-        )
-        if r.status_code == 200:
-            order_type = "LIMIT" if price else "MARKET"
-            print(f"    >> {side} {qty:.6f} {coin} @ ${price} ({order_type}) — OK")
-            return r.json()
-        print(f"    >> {side} {qty:.6f} {coin} — FAILED ({r.status_code}): {r.text}")
-        return None
-    except Exception as e:
-        print(f"    >> {side} {coin} — ERROR: {e}")
-        return None
-
-def cancel_orders(pair):
-    try:
-        p = {"timestamp": int(time.time() * 1000), "pair": pair}
-        return requests.post(f"{BASE_URL}/v3/cancel_order", data=p, headers=_auth(p)).json()
-    except Exception:
-        return None
-
-def query_order():
-    try:
-        p = {"timestamp": int(time.time() * 1000)}
-        return requests.post(f"{BASE_URL}/v3/query_order", data=p, headers=_auth(p)).json()
-    except Exception:
-        return None
-
-def pending_count():
-    try:
-        p = {"timestamp": int(time.time() * 1000)}
-        return requests.get(f"{BASE_URL}/v3/pending_count", params=p, headers=_auth(p)).json()
-    except Exception:
-        return None
+client = RoostooClient(api_key=API_KEY, secret_key=SECRET)
 
 # ─── STRATEGY: VOLATILITY-TARGETED CROSS-ASSET MOMENTUM ──────
 #
@@ -114,8 +26,18 @@ def run_portfolio_bot():
     print("  VOLATILITY-TARGETED CROSS-ASSET MOMENTUM BOT")
     print("=" * 60)
 
+    # ── Auth check ──
+    print("\nChecking API credentials...")
+    try:
+        bal = client.get_balance()
+        print("  API credentials OK")
+    except Exception as e:
+        print(f"  !! AUTH FAILED: {e}")
+        print("  !! Check your API_KEY and SECRET in .env")
+        return
+
     # ── Load exchange precision rules ──
-    ex_info = get_ex_info()
+    ex_info = client.get_exchange_info()
     amt_precision = {}
     if ex_info and "TradePairs" in ex_info:
         for pname, pinfo in ex_info["TradePairs"].items():
@@ -141,14 +63,14 @@ def run_portfolio_bot():
 
     # ── Sync with exchange ──
     print("\nSyncing with exchange...")
-    bal = get_balance()
     pos = {c: 0.0 for c in UNIVERSE}
     start_usd = 50000.0
 
-    if bal and "SpotWallet" in bal:
+    wallet_key = "SpotWallet" if "SpotWallet" in bal else "Wallet"
+    if wallet_key in bal:
         for c in UNIVERSE:
-            pos[c] = bal["SpotWallet"].get(c, {}).get("Free", 0.0)
-        start_usd = bal["SpotWallet"].get("USD", {}).get("Free", 50000.0)
+            pos[c] = bal[wallet_key].get(c, {}).get("Free", 0.0)
+        start_usd = bal[wallet_key].get("USD", {}).get("Free", 50000.0)
 
     print(f"  Starting USD:       ${start_usd:,.2f}")
     print(f"  Starting positions: {pos}")
@@ -160,7 +82,7 @@ def run_portfolio_bot():
         for coin in UNIVERSE:
             try:
                 pair = f"{coin}/USD"
-                td = get_ticker(pair)
+                td = client.get_ticker(pair)
                 if not (td and "Data" in td and pair in td["Data"]):
                     continue
 
@@ -226,11 +148,23 @@ def run_portfolio_bot():
                     prec = amt_precision.get(coin, 4)
                     trade_qty = round(trade_qty, prec)
                     if trade_qty > 0:
-                        if place_order(coin, signal, trade_qty, price=price):
+                        qty_str = f"{trade_qty:.{prec}f}"
+                        price_str = str(price)
+                        try:
+                            result = client.place_order(
+                                pair=pair,
+                                side=signal,
+                                quantity=qty_str,
+                                order_type="LIMIT",
+                                price=price_str,
+                            )
+                            print(f"    >> {signal} {qty_str} {coin} @ ${price} (LIMIT) — OK")
                             if signal == "BUY":
                                 pos[coin] += trade_qty
                             else:
                                 pos[coin] -= trade_qty
+                        except Exception as e:
+                            print(f"    >> {signal} {qty_str} {coin} — FAILED: {e}")
 
                 time.sleep(1)
 
@@ -239,13 +173,14 @@ def run_portfolio_bot():
 
         # ── Re-sync positions & report P&L ──
         try:
-            bal = get_balance()
-            if bal and "SpotWallet" in bal:
+            bal = client.get_balance()
+            wallet_key = "SpotWallet" if "SpotWallet" in bal else "Wallet"
+            if wallet_key in bal:
                 for c in UNIVERSE:
-                    pos[c] = bal["SpotWallet"].get(c, {}).get("Free", 0.0)
-                usd = bal["SpotWallet"].get("USD", {}).get("Free", 0)
+                    pos[c] = bal[wallet_key].get(c, {}).get("Free", 0.0)
+                usd = bal[wallet_key].get("USD", {}).get("Free", 0)
 
-                tk = get_ticker()
+                tk = client.get_ticker()
                 if tk and "Data" in tk:
                     coin_val = sum(
                         pos[c] * tk["Data"].get(f"{c}/USD", {}).get("LastPrice", 0)
