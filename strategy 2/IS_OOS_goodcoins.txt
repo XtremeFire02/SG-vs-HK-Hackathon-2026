@@ -1,0 +1,28 @@
+********************Pair: NEAR/USD, Market Cap: 1,559,677,713 USD********************
+
+=== In-Sample Backtest for NEAR/USD ===
+initial_equity: 50000.00, final_equity: 47781.49, return: -4.44%
+
+=== Out-of-Sample Backtest for NEAR/USD ===
+initial_equity: 50000.00, final_equity: 57398.42, return: 14.80%
+********************Pair: PAXG/USD, Market Cap: 889,460,693 USD********************
+
+=== In-Sample Backtest for PAXG/USD ===
+initial_equity: 49927.06, final_equity: 39692.50, return: -20.50%
+
+=== Out-of-Sample Backtest for PAXG/USD ===
+initial_equity: 49958.42, final_equity: 49294.36, return: -1.33%
+********************Pair: POL/USD, Market Cap: 830,706,519 USD********************
+
+=== In-Sample Backtest for POL/USD ===
+initial_equity: 50000.00, final_equity: 49372.20, return: -1.26%
+
+=== Out-of-Sample Backtest for POL/USD ===
+initial_equity: 50000.00, final_equity: 55925.30, return: 11.85%
+********************Pair: SHIB/USD, Market Cap: 3,547,374,597 USD********************
+
+=== In-Sample Backtest for SHIB/USD ===
+initial_equity: 50000.00, final_equity: 48704.52, return: -2.59%
+
+=== Out-of-Sample Backtest for SHIB/USD ===
+initial_equity: 50000.00, final_equity: 49603.66, return: -0.79%

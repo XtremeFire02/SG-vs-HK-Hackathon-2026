@@ -1,0 +1,308 @@
+********************Pair: AAVE/USD, Market Cap: 1,680,813,758 USD********************
+
+=== In-Sample Backtest for AAVE/USD ===
+initial_equity: 50000.00, final_equity: 37511.26, return: -24.98%
+
+=== Out-of-Sample Backtest for AAVE/USD ===
+initial_equity: 50000.00, final_equity: 39224.57, return: -21.55%
+********************Pair: ADA/USD, Market Cap: 10,246,142,472 USD********************
+
+=== In-Sample Backtest for ADA/USD ===
+initial_equity: 50000.00, final_equity: 47547.67, return: -4.90%
+
+=== Out-of-Sample Backtest for ADA/USD ===
+initial_equity: 50000.00, final_equity: 37554.57, return: -24.89%
+********************Pair: APT/USD, Market Cap: 793,579,485 USD********************
+
+=== In-Sample Backtest for APT/USD ===
+initial_equity: 50000.00, final_equity: 37206.17, return: -25.59%
+
+=== Out-of-Sample Backtest for APT/USD ===
+initial_equity: 50000.00, final_equity: 39289.97, return: -21.42%
+********************Pair: ARB/USD, Market Cap: 602,874,249 USD********************
+
+=== In-Sample Backtest for ARB/USD ===
+initial_equity: 50000.00, final_equity: 52544.83, return: 5.09%
+
+=== Out-of-Sample Backtest for ARB/USD ===
+initial_equity: 50000.00, final_equity: 38225.27, return: -23.55%
+********************Pair: AVAX/USD, Market Cap: 4,049,619,983 USD********************
+
+=== In-Sample Backtest for AVAX/USD ===
+initial_equity: 50000.00, final_equity: 59449.91, return: 18.90%
+
+=== Out-of-Sample Backtest for AVAX/USD ===
+initial_equity: 50000.00, final_equity: 43375.67, return: -13.25%
+********************Pair: BNB/USD, Market Cap: 89,387,032,341 USD********************
+
+=== In-Sample Backtest for BNB/USD ===
+initial_equity: 50000.00, final_equity: 53821.34, return: 7.64%
+
+=== Out-of-Sample Backtest for BNB/USD ===
+initial_equity: 50006.38, final_equity: 41770.99, return: -16.47%
+********************Pair: BONK/USD, Market Cap: 461,941,386 USD********************
+
+=== In-Sample Backtest for BONK/USD ===
+initial_equity: 50000.00, final_equity: 98891.94, return: 97.78%
+
+=== Out-of-Sample Backtest for BONK/USD ===
+initial_equity: 50000.00, final_equity: 40932.86, return: -18.13%
+********************Pair: BTC/USD, Market Cap: 1,414,274,749,094 USD********************
+
+=== In-Sample Backtest for BTC/USD ===
+initial_equity: 50000.00, final_equity: 50002.69, return: 0.01%
+
+=== Out-of-Sample Backtest for BTC/USD ===
+initial_equity: 50000.00, final_equity: 50935.72, return: 1.87%
+********************Pair: CAKE/USD, Market Cap: 459,031,893 USD********************
+
+=== In-Sample Backtest for CAKE/USD ===
+initial_equity: 50000.00, final_equity: 62037.58, return: 24.08%
+
+=== Out-of-Sample Backtest for CAKE/USD ===
+initial_equity: 50410.69, final_equity: 41247.93, return: -18.18%
+********************Pair: CFX/USD, Market Cap: 321,389,790 USD********************
+
+=== In-Sample Backtest for CFX/USD ===
+initial_equity: 50000.00, final_equity: 42977.46, return: -14.05%
+
+=== Out-of-Sample Backtest for CFX/USD ===
+initial_equity: 50000.00, final_equity: 47839.27, return: -4.32%
+********************Pair: CRV/USD, Market Cap: 290,070,737 USD********************
+
+=== In-Sample Backtest for CRV/USD ===
+initial_equity: 50000.00, final_equity: 60568.46, return: 21.14%
+
+=== Out-of-Sample Backtest for CRV/USD ===
+initial_equity: 50000.00, final_equity: 42791.84, return: -14.42%
+********************Pair: DOGE/USD, Market Cap: 14,130,252,755 USD********************
+
+=== In-Sample Backtest for DOGE/USD ===
+initial_equity: 50000.00, final_equity: 80435.45, return: 60.87%
+
+=== Out-of-Sample Backtest for DOGE/USD ===
+initial_equity: 50000.00, final_equity: 39870.60, return: -20.26%
+********************Pair: DOT/USD, Market Cap: 24,048,867 USD********************
+
+=== In-Sample Backtest for DOT/USD ===
+initial_equity: 50000.00, final_equity: 45247.24, return: -9.51%
+
+=== Out-of-Sample Backtest for DOT/USD ===
+initial_equity: 50000.00, final_equity: 35546.61, return: -28.91%
+********************Pair: EIGEN/USD, Market Cap: 48,654,321 USD********************
+
+=== In-Sample Backtest for EIGEN/USD ===
+initial_equity: 50000.00, final_equity: 40401.81, return: -19.20%
+
+=== Out-of-Sample Backtest for EIGEN/USD ===
+initial_equity: 49725.38, final_equity: 45194.53, return: -9.11%
+********************Pair: ENA/USD, Market Cap: 868,750,780 USD********************
+
+=== In-Sample Backtest for ENA/USD ===
+initial_equity: 50000.00, final_equity: 67010.09, return: 34.02%
+
+=== Out-of-Sample Backtest for ENA/USD ===
+initial_equity: 50000.00, final_equity: 44118.31, return: -11.76%
+********************Pair: ETH/USD, Market Cap: 259,324,824,611 USD********************
+
+=== In-Sample Backtest for ETH/USD ===
+initial_equity: 50000.00, final_equity: 57787.91, return: 15.58%
+
+=== Out-of-Sample Backtest for ETH/USD ===
+initial_equity: 50000.00, final_equity: 46271.93, return: -7.46%
+********************Pair: FET/USD, Market Cap: 594,548,689 USD********************
+
+=== In-Sample Backtest for FET/USD ===
+initial_equity: 50000.00, final_equity: 51998.67, return: 4.00%
+
+=== Out-of-Sample Backtest for FET/USD ===
+initial_equity: 50000.00, final_equity: 50848.17, return: 1.70%
+********************Pair: FIL/USD, Market Cap: 690,027,247 USD********************
+
+=== In-Sample Backtest for FIL/USD ===
+initial_equity: 50000.00, final_equity: 38656.32, return: -22.69%
+
+=== Out-of-Sample Backtest for FIL/USD ===
+initial_equity: 50000.00, final_equity: 48522.08, return: -2.96%
+********************Pair: FLOKI/USD, Market Cap: 288,475,887 USD********************
+
+=== In-Sample Backtest for FLOKI/USD ===
+initial_equity: 50000.00, final_equity: 65736.06, return: 31.47%
+
+=== Out-of-Sample Backtest for FLOKI/USD ===
+initial_equity: 50000.00, final_equity: 50262.14, return: 0.52%
+********************Pair: HBAR/USD, Market Cap: 4,038,046,344 USD********************
+
+=== In-Sample Backtest for HBAR/USD ===
+initial_equity: 50000.00, final_equity: 64768.15, return: 29.54%
+
+=== Out-of-Sample Backtest for HBAR/USD ===
+initial_equity: 50000.00, final_equity: 42163.68, return: -15.67%
+********************Pair: ICP/USD, Market Cap: 1,382,833,442 USD********************
+
+=== In-Sample Backtest for ICP/USD ===
+initial_equity: 50000.00, final_equity: 41846.99, return: -16.31%
+
+=== Out-of-Sample Backtest for ICP/USD ===
+initial_equity: 50000.00, final_equity: 79247.18, return: 58.49%
+********************Pair: LINK/USD, Market Cap: 5,716,871,726 USD********************
+
+=== In-Sample Backtest for LINK/USD ===
+initial_equity: 50000.00, final_equity: 47459.60, return: -5.08%
+
+=== Out-of-Sample Backtest for LINK/USD ===
+initial_equity: 50000.00, final_equity: 35670.53, return: -28.66%
+********************Pair: LISTA/USD, Market Cap: 19,895,000 USD********************
+
+=== In-Sample Backtest for LISTA/USD ===
+initial_equity: 50000.00, final_equity: 27944.04, return: -44.11%
+
+=== Out-of-Sample Backtest for LISTA/USD ===
+initial_equity: 49333.20, final_equity: 49838.43, return: 1.02%
+********************Pair: LTC/USD, Market Cap: 4,250,164,894 USD********************
+
+=== In-Sample Backtest for LTC/USD ===
+initial_equity: 50000.00, final_equity: 32319.72, return: -35.36%
+
+=== Out-of-Sample Backtest for LTC/USD ===
+initial_equity: 50000.00, final_equity: 38012.88, return: -23.97%
+********************Pair: NEAR/USD, Market Cap: 1,559,677,713 USD********************
+
+=== In-Sample Backtest for NEAR/USD ===
+initial_equity: 50000.00, final_equity: 59191.18, return: 18.38%
+
+=== Out-of-Sample Backtest for NEAR/USD ===
+initial_equity: 50000.00, final_equity: 62996.21, return: 25.99%
+********************Pair: PAXG/USD, Market Cap: 889,460,693 USD********************
+
+=== In-Sample Backtest for PAXG/USD ===
+initial_equity: 49985.37, final_equity: 58347.46, return: 16.73%
+
+=== Out-of-Sample Backtest for PAXG/USD ===
+initial_equity: 50033.04, final_equity: 61452.29, return: 22.82%
+********************Pair: PENDLE/USD, Market Cap: 208,045,090 USD********************
+
+=== In-Sample Backtest for PENDLE/USD ===
+initial_equity: 50000.00, final_equity: 39197.60, return: -21.60%
+
+=== Out-of-Sample Backtest for PENDLE/USD ===
+initial_equity: 50000.00, final_equity: 47148.90, return: -5.70%
+********************Pair: PENGU/USD, Market Cap: 448,194,624 USD********************
+
+=== In-Sample Backtest for PENGU/USD ===
+initial_equity: 50000.00, final_equity: 90514.48, return: 81.03%
+
+=== Out-of-Sample Backtest for PENGU/USD ===
+initial_equity: 50000.00, final_equity: 38804.29, return: -22.39%
+********************Pair: PEPE/USD, Market Cap: 1,447,173,599 USD********************
+
+=== In-Sample Backtest for PEPE/USD ===
+initial_equity: 50000.00, final_equity: 73952.15, return: 47.90%
+
+=== Out-of-Sample Backtest for PEPE/USD ===
+initial_equity: 50000.00, final_equity: 49617.54, return: -0.76%
+********************Pair: POL/USD, Market Cap: 830,706,519 USD********************
+
+=== In-Sample Backtest for POL/USD ===
+initial_equity: 50000.00, final_equity: 60082.78, return: 20.17%
+
+=== Out-of-Sample Backtest for POL/USD ===
+initial_equity: 50000.00, final_equity: 59155.95, return: 18.31%
+********************Pair: SEI/USD, Market Cap: 382,023,999 USD********************
+
+=== In-Sample Backtest for SEI/USD ===
+initial_equity: 50000.00, final_equity: 42665.79, return: -14.67%
+
+=== Out-of-Sample Backtest for SEI/USD ===
+initial_equity: 50000.00, final_equity: 46530.66, return: -6.94%
+********************Pair: SHIB/USD, Market Cap: 3,547,374,597 USD********************
+
+=== In-Sample Backtest for SHIB/USD ===
+initial_equity: 50000.00, final_equity: 58872.81, return: 17.75%
+
+=== Out-of-Sample Backtest for SHIB/USD ===
+initial_equity: 50000.00, final_equity: 53131.97, return: 6.26%
+********************Pair: SOL/USD, Market Cap: 51,423,869,225 USD********************
+
+=== In-Sample Backtest for SOL/USD ===
+initial_equity: 50000.00, final_equity: 53462.26, return: 6.92%
+
+=== Out-of-Sample Backtest for SOL/USD ===
+initial_equity: 50000.00, final_equity: 42496.38, return: -15.01%
+********************Pair: SUI/USD, Market Cap: 3,776,355,173 USD********************
+
+=== In-Sample Backtest for SUI/USD ===
+initial_equity: 50000.00, final_equity: 60041.75, return: 20.08%
+
+=== Out-of-Sample Backtest for SUI/USD ===
+initial_equity: 50000.00, final_equity: 36362.72, return: -27.27%
+********************Pair: TAO/USD, Market Cap: 2,612,437,050 USD********************
+
+=== In-Sample Backtest for TAO/USD ===
+initial_equity: 50000.00, final_equity: 52977.64, return: 5.96%
+
+=== Out-of-Sample Backtest for TAO/USD ===
+initial_equity: 50000.00, final_equity: 47531.97, return: -4.94%
+********************Pair: TON/USD, Market Cap: 3,069,342,435 USD********************
+
+=== In-Sample Backtest for TON/USD ===
+initial_equity: 50000.00, final_equity: 41535.63, return: -16.93%
+
+=== Out-of-Sample Backtest for TON/USD ===
+initial_equity: 50000.00, final_equity: 44873.84, return: -10.25%
+********************Pair: TRX/USD, Market Cap: 26,712,168,226 USD********************
+
+=== In-Sample Backtest for TRX/USD ===
+initial_equity: 50000.00, final_equity: 43558.31, return: -12.88%
+
+=== Out-of-Sample Backtest for TRX/USD ===
+initial_equity: 50000.00, final_equity: 49335.36, return: -1.33%
+********************Pair: UNI/USD, Market Cap: 2,159,128,566 USD********************
+
+=== In-Sample Backtest for UNI/USD ===
+initial_equity: 50000.00, final_equity: 48946.64, return: -2.11%
+
+=== Out-of-Sample Backtest for UNI/USD ===
+initial_equity: 50000.00, final_equity: 40423.65, return: -19.15%
+********************Pair: WIF/USD, Market Cap: 178,807,823 USD********************
+
+=== In-Sample Backtest for WIF/USD ===
+initial_equity: 50000.00, final_equity: 65895.54, return: 31.79%
+
+=== Out-of-Sample Backtest for WIF/USD ===
+initial_equity: 50000.00, final_equity: 42427.11, return: -15.15%
+********************Pair: WLD/USD, Market Cap: 950,564,616 USD********************
+
+=== In-Sample Backtest for WLD/USD ===
+initial_equity: 50000.00, final_equity: 98914.74, return: 97.83%
+
+=== Out-of-Sample Backtest for WLD/USD ===
+initial_equity: 50000.00, final_equity: 41286.45, return: -17.43%
+********************Pair: XLM/USD, Market Cap: 5,482,992,646 USD********************
+
+=== In-Sample Backtest for XLM/USD ===
+initial_equity: 50000.00, final_equity: 61102.32, return: 22.20%
+
+=== Out-of-Sample Backtest for XLM/USD ===
+initial_equity: 50000.00, final_equity: 40011.09, return: -19.98%
+********************Pair: XRP/USD, Market Cap: 88,930,520,074 USD********************
+
+=== In-Sample Backtest for XRP/USD ===
+initial_equity: 50000.00, final_equity: 43186.64, return: -13.63%
+
+=== Out-of-Sample Backtest for XRP/USD ===
+initial_equity: 50000.00, final_equity: 42676.31, return: -14.65%
+********************Pair: ZEC/USD, Market Cap: 3,804,160,111 USD********************
+
+=== In-Sample Backtest for ZEC/USD ===
+initial_equity: 50000.00, final_equity: 47775.42, return: -4.45%
+
+=== Out-of-Sample Backtest for ZEC/USD ===
+initial_equity: 50000.00, final_equity: 78963.76, return: 57.93%
+********************Pair: ZEN/USD, Market Cap: 92,904,481 USD********************
+
+=== In-Sample Backtest for ZEN/USD ===
+initial_equity: 50000.00, final_equity: 45560.69, return: -8.88%
+
+=== Out-of-Sample Backtest for ZEN/USD ===
+initial_equity: 50000.00, final_equity: 31584.86, return: -36.83%
