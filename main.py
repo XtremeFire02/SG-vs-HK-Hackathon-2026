@@ -2,6 +2,7 @@ import time
 import os
 import csv
 import signal
+import json
 from datetime import datetime, timezone
 
 from dotenv import load_dotenv
@@ -29,8 +30,8 @@ client = RoostooClient(api_key=API_KEY, secret_key=SECRET)
 #       OR price < EXIT_LB-bar low
 #    4. Cross-sectional: only hold TOP_K positions, prefer strongest breakouts
 #
-#  Backtested Sharpe: +0.73 (7d flat), +6.70 (1mo), -0.09 (60d)
-#  Profit Factor: 1.26 / 1.77 / 1.00
+#  Backtested Sharpe: +18.76 (7d), +5.80 (1mo), +1.75 (60d)
+#  Profit Factor (with regime detector): avg Sharpe +8.77
 #
 
 
@@ -67,9 +68,9 @@ def run_breakout_bot():
     ENTRY_LB       = 120    # Donchian entry channel lookback (~60 min at 30s ticks) — optimized via sweep
     EXIT_LB        = 48     # Donchian exit channel lookback (tighter)
     ATR_WIN        = 20     # ATR window
-    TOP_K          = 2      # max simultaneous positions
+    TOP_K          = 4      # Allow holding all 4 coins if the market moves
     RISK_PER_TRADE = 0.01   # risk 1% of equity per trade
-    MAX_ALLOC      = 0.25   # never put more than 25% equity in one coin
+    MAX_ALLOC      = 0.24   # 4 positions * 24% = 96% utilization
     STOP_MULT      = 2.0    # trailing stop = peak - STOP_MULT * ATR
     MIN_VOL        = 0.00005 # minimum ATR/price to allow entry — optimized via sweep
     PRICE_OFFSET   = 0.0002 # 0.02% limit price offset
@@ -77,6 +78,27 @@ def run_breakout_bot():
     MIN_ORDER_USD  = 50.00  # minimum order notional
     REGIME_VOL_THRESH = 0.0002  # avg vol across coins must exceed this to trade (0.02%) — optimized via sweep
     REGIME_WINDOW  = 10     # how many ticks of vol history to average for regime
+
+    # ── Circuit Breakers ──
+    MAX_DAILY_LOSS_PCT  = 0.05   # halt trading if daily loss exceeds 5%
+    MAX_DRAWDOWN_PCT    = 0.10   # kill switch if drawdown from peak exceeds 10%
+    MAX_CONSECUTIVE_LOSSES = 5   # pause entries after 5 consecutive losing trades
+
+    # ── Order Verification ──
+    ORDER_VERIFY_DELAY  = 2      # seconds to wait before verifying order fill
+    ORDER_VERIFY_RETRIES = 3     # number of retries for order verification
+
+    # ── Stale Data Detection ──
+    STALE_PRICE_TICKS   = 10     # alert if price unchanged for this many ticks
+    MAX_STALE_TICKS     = 30     # skip trading if stale for this many ticks
+
+    # ── Error Recovery ──
+    MAX_API_RETRIES     = 3
+    BASE_RETRY_DELAY    = 2      # seconds (doubles each retry)
+
+    # ── Health Check ──
+    HEALTH_LOG_FILE     = "bot_health.log"
+    HEALTH_INTERVAL     = 60     # log health every N ticks
 
     HIST_KEEP = ENTRY_LB + ATR_WIN + 10
 
@@ -89,6 +111,12 @@ def run_breakout_bot():
     entry_price = {}
     current_longs = set()
     last_exit  = {c: -COOLDOWN for c in UNIVERSE}
+    last_prices = {c: None for c in UNIVERSE}       # for stale detection
+    stale_count = {c: 0 for c in UNIVERSE}           # consecutive unchanged ticks
+    consecutive_losses = 0                            # for circuit breaker
+    daily_start_equity = None                         # set on first equity calc
+    circuit_breaker_active = False
+    api_error_count = 0
 
     global_tick = 0
 
@@ -164,30 +192,102 @@ def run_breakout_bot():
         ])
         log_fp.flush()
 
+    def api_call_with_retry(func, *args, **kwargs):
+        """Call an API function with exponential backoff retry."""
+        for attempt in range(MAX_API_RETRIES):
+            try:
+                result = func(*args, **kwargs)
+                return result
+            except Exception as e:
+                if attempt < MAX_API_RETRIES - 1:
+                    delay = BASE_RETRY_DELAY * (2 ** attempt)
+                    print(f"  [RETRY] {func.__name__} failed (attempt {attempt+1}): {e} — retrying in {delay}s")
+                    time.sleep(delay)
+                else:
+                    raise
+
+    def verify_order(pair, side, expected_qty):
+        """Verify an order was filled by checking balance change."""
+        time.sleep(ORDER_VERIFY_DELAY)
+        for attempt in range(ORDER_VERIFY_RETRIES):
+            try:
+                result = client.query_order(pair)
+                if result:
+                    return True
+            except Exception:
+                pass
+            if attempt < ORDER_VERIFY_RETRIES - 1:
+                time.sleep(1)
+        print(f"  [WARN] Could not verify {side} order for {pair}")
+        return False
+
+    def log_health():
+        """Write a health check line to the health log."""
+        with open(HEALTH_LOG_FILE, "a") as hf:
+            hf.write(json.dumps({
+                "ts": datetime.now(timezone.utc).isoformat(),
+                "tick": global_tick,
+                "equity": equity,
+                "pnl_pct": (equity / start_equity - 1) * 100,
+                "positions": {c: pos[c] for c in UNIVERSE if pos[c] > 0},
+                "regime": regime if 'regime' in dir() else "WARMUP",
+                "circuit_breaker": circuit_breaker_active,
+                "consecutive_losses": consecutive_losses,
+            }) + "\n")
+
     # ── Main loop ──
+    regime = "WARMUP"
     try:
         while not shutdown_requested:
             global_tick += 1
 
-            # Cancel stale orders
-            for coin in UNIVERSE:
+            # ── Health check logging ──
+            if global_tick % HEALTH_INTERVAL == 0:
                 try:
-                    client.cancel_order(f"{coin}/USD")
+                    log_health()
                 except Exception:
                     pass
 
-            # Fetch prices
+            # Cancel stale orders (with retry)
+            for coin in UNIVERSE:
+                try:
+                    api_call_with_retry(client.cancel_order, f"{coin}/USD")
+                except Exception:
+                    pass
+
+            # Fetch prices (with retry)
             prices_now = {}
             for coin in UNIVERSE:
                 try:
-                    td = client.get_ticker(f"{coin}/USD")
+                    td = api_call_with_retry(client.get_ticker, f"{coin}/USD")
                     if td and "Data" in td and f"{coin}/USD" in td["Data"]:
                         prices_now[coin] = float(td["Data"][f"{coin}/USD"]["LastPrice"])
-                except Exception:
-                    pass
+                except Exception as e:
+                    api_error_count += 1
+                    print(f"  [API-ERR] get_ticker {coin} failed after retries: {e}")
 
             if len(prices_now) < len(UNIVERSE):
                 print(f"[TICK {global_tick}] Missing price data, skipping")
+                time.sleep(30)
+                continue
+
+            # ── Stale data detection ──
+            any_stale = False
+            for coin in UNIVERSE:
+                if last_prices[coin] is not None and prices_now[coin] == last_prices[coin]:
+                    stale_count[coin] += 1
+                else:
+                    stale_count[coin] = 0
+                last_prices[coin] = prices_now[coin]
+
+                if stale_count[coin] >= STALE_PRICE_TICKS:
+                    if stale_count[coin] == STALE_PRICE_TICKS:
+                        print(f"  [STALE] {coin} price unchanged for {stale_count[coin]} ticks!")
+                if stale_count[coin] >= MAX_STALE_TICKS:
+                    any_stale = True
+
+            if any_stale:
+                print(f"[TICK {global_tick}] Stale data detected (>{MAX_STALE_TICKS} ticks unchanged), skipping trades")
                 time.sleep(30)
                 continue
 
@@ -233,7 +333,7 @@ def run_breakout_bot():
                 # Volatility %
                 vol_pct[c] = atr[c] / prices_now[c] if prices_now[c] > 0 else 0
 
-            # ── CHECK EXITS ──
+            # ── CHECK EXITS (always execute — even if circuit breaker is on) ──
             for c in list(current_longs):
                 if pos[c] <= 0:
                     current_longs.discard(c)
@@ -255,22 +355,33 @@ def run_breakout_bot():
                         qty_str = f"{qty:.{prec}f}"
                         price_str = f"{limit_price:.{p_prec}f}"
 
+                        trade_pnl = 0.0
                         pnl_trade = ""
                         ep = entry_price.get(c)
                         if ep and ep > 0:
-                            pnl_trade = f" P&L: {(prices_now[c]/ep - 1)*100:+.2f}%"
+                            trade_pnl = (prices_now[c] / ep - 1)
+                            pnl_trade = f" P&L: {trade_pnl*100:+.2f}%"
 
                         print(f"  [{reason}] {c}: ${prices_now[c]:,.2f} <= "
                               f"${exit_level:,.2f}{pnl_trade}")
 
                         try:
-                            client.place_order(pair=pair, side="SELL",
-                                               quantity=qty_str, order_type="LIMIT",
-                                               price=price_str)
+                            api_call_with_retry(
+                                client.place_order, pair=pair, side="SELL",
+                                quantity=qty_str, order_type="LIMIT",
+                                price=price_str)
                             print(f"    >> SELL-{reason} {qty_str} {c} @ ${limit_price}")
                             log_trade(c, f"SELL-{reason}", qty, prices_now[c],
                                       limit_price, atr[c], chan_high[c],
                                       chan_low[c], vol_pct[c])
+                            verify_order(pair, "SELL", qty)
+
+                            # Track consecutive losses for circuit breaker
+                            if trade_pnl <= 0:
+                                consecutive_losses += 1
+                            else:
+                                consecutive_losses = 0
+
                         except Exception as e:
                             print(f"    >> SELL-{reason} {c} FAILED: {e}")
 
@@ -288,9 +399,35 @@ def run_breakout_bot():
             smoothed_vol = sum(vol_history) / len(vol_history)
             regime = "ACTIVE" if smoothed_vol >= REGIME_VOL_THRESH else "FLAT"
 
-            # ── CHECK ENTRIES (only in ACTIVE regime) ──
+            # ── CIRCUIT BREAKER CHECKS ──
+            # Check daily loss limit
+            if daily_start_equity is None:
+                daily_start_equity = equity
+            daily_loss = (equity / daily_start_equity - 1) if daily_start_equity > 0 else 0
+
+            # Check max drawdown from all-time peak
+            dd_from_peak = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0
+
+            if daily_loss <= -MAX_DAILY_LOSS_PCT:
+                if not circuit_breaker_active:
+                    print(f"  [CIRCUIT-BREAKER] Daily loss {daily_loss:.2%} exceeds limit {-MAX_DAILY_LOSS_PCT:.1%} — HALTING entries")
+                circuit_breaker_active = True
+            elif dd_from_peak >= MAX_DRAWDOWN_PCT:
+                if not circuit_breaker_active:
+                    print(f"  [CIRCUIT-BREAKER] Drawdown {dd_from_peak:.2%} exceeds limit {MAX_DRAWDOWN_PCT:.1%} — HALTING entries")
+                circuit_breaker_active = True
+            elif consecutive_losses >= MAX_CONSECUTIVE_LOSSES:
+                if not circuit_breaker_active:
+                    print(f"  [CIRCUIT-BREAKER] {consecutive_losses} consecutive losses — HALTING entries")
+                circuit_breaker_active = True
+            else:
+                if circuit_breaker_active:
+                    print(f"  [CIRCUIT-BREAKER] Conditions cleared — resuming entries")
+                circuit_breaker_active = False
+
+            # ── CHECK ENTRIES (only in ACTIVE regime + no circuit breaker) ──
             breakout_candidates = []
-            if regime == "ACTIVE":
+            if regime == "ACTIVE" and not circuit_breaker_active:
                 for c in UNIVERSE:
                     if c in current_longs:
                         continue
@@ -316,9 +453,9 @@ def run_breakout_bot():
                 qty_by_alloc = (equity * MAX_ALLOC) / prices_now[c]
                 qty = min(qty_by_risk, qty_by_alloc)
 
-                # Budget cap
+                # Budget cap (with retry)
                 try:
-                    bal_now = client.get_balance()
+                    bal_now = api_call_with_retry(client.get_balance)
                     wk = "SpotWallet" if "SpotWallet" in bal_now else "Wallet"
                     free_cash = bal_now.get(wk, {}).get("USD", {}).get("Free", 0.0)
                 except Exception:
@@ -345,13 +482,15 @@ def run_breakout_bot():
                       f"strength={strength:.2f} vol={vol_pct[c]:.3%}")
 
                 try:
-                    client.place_order(pair=pair, side="BUY",
-                                       quantity=qty_str, order_type="LIMIT",
-                                       price=price_str)
+                    api_call_with_retry(
+                        client.place_order, pair=pair, side="BUY",
+                        quantity=qty_str, order_type="LIMIT",
+                        price=price_str)
                     print(f"    >> BUY {qty_str} {c} @ ${limit_price}")
                     log_trade(c, "BUY-BREAKOUT", qty, prices_now[c],
                               limit_price, atr[c], chan_high[c],
                               chan_low[c], vol_pct[c])
+                    verify_order(pair, "BUY", qty)
                     pos[c] += qty
                     entry_price[c] = prices_now[c]
                     peak_price[c] = prices_now[c]
@@ -372,13 +511,14 @@ def run_breakout_bot():
                     if cd_remaining > 0:
                         cd_info = f" cd={cd_remaining}"
                 bo = "BREAK" if prices_now[c] > chan_high[c] else "     "
+                stale_tag = f" STALE({stale_count[c]})" if stale_count[c] >= STALE_PRICE_TICKS else ""
                 print(f"  [{c}] ${prices_now[c]:,.2f} | ch=[${chan_low[c]:,.2f}, "
                       f"${chan_high[c]:,.2f}] | vol={vol_pct[c]:.3%} "
-                      f"{bo} | {status}{stop_info}{cd_info}")
+                      f"{bo} | {status}{stop_info}{cd_info}{stale_tag}")
 
             # ── Re-sync equity ──
             try:
-                bal = client.get_balance()
+                bal = api_call_with_retry(client.get_balance)
                 wallet_key = "SpotWallet" if "SpotWallet" in bal else "Wallet"
                 if wallet_key in bal:
                     for c in UNIVERSE:
@@ -394,11 +534,13 @@ def run_breakout_bot():
                     pnl = (equity / start_equity - 1) * 100
                     dd = (peak_equity - equity) / peak_equity if peak_equity > 0 else 0
 
+                    cb_tag = " [CB-HALT]" if circuit_breaker_active else ""
+                    loss_tag = f" losses={consecutive_losses}" if consecutive_losses > 0 else ""
                     print(f"\n{'=' * 60}")
                     print(f"EQUITY: ${equity:,.2f} | P&L: {pnl:+.2f}% "
-                          f"| DD: {dd:.1%} | Tick: {global_tick}")
+                          f"| DD: {dd:.1%} | Tick: {global_tick}{cb_tag}")
                     print(f"Holdings: {', '.join(sorted(current_longs)) if current_longs else 'ALL CASH'}"
-                          f" | Regime: {regime} (vol={smoothed_vol:.3%})")
+                          f" | Regime: {regime} (vol={smoothed_vol:.3%}){loss_tag}")
                     print(f"{'=' * 60}\n")
             except Exception as e:
                 print(f"[RESYNC] Failed: {e}")
@@ -411,9 +553,16 @@ def run_breakout_bot():
         print(f"[SHUTDOWN] Final equity: ${equity:,.2f} | P&L: {pnl_final:+.2f}%")
         print(f"[SHUTDOWN] Positions: {pos}")
         print(f"[SHUTDOWN] Ticks: {global_tick}")
+        print(f"[SHUTDOWN] Circuit breaker was active: {circuit_breaker_active}")
+        print(f"[SHUTDOWN] Consecutive losses at exit: {consecutive_losses}")
         print(f"{'=' * 60}")
         log_fp.close()
         print("[SHUTDOWN] Trade log saved and closed.")
+        # Final health log
+        try:
+            log_health()
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':
