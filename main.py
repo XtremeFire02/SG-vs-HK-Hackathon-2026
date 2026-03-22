@@ -75,6 +75,8 @@ def run_breakout_bot():
     PRICE_OFFSET   = 0.0002 # 0.02% limit price offset
     COOLDOWN       = 20     # ticks after stop-out before re-entry (~10 min)
     MIN_ORDER_USD  = 50.00  # minimum order notional
+    REGIME_VOL_THRESH = 0.0002  # avg vol across coins must exceed this to trade (0.02%) — optimized via sweep
+    REGIME_WINDOW  = 10     # how many ticks of vol history to average for regime
 
     HIST_KEEP = ENTRY_LB + ATR_WIN + 10
 
@@ -82,6 +84,7 @@ def run_breakout_bot():
     hist       = {}
     ticks      = {c: 0 for c in UNIVERSE}
     pos        = {c: 0.0 for c in UNIVERSE}
+    vol_history = []  # rolling avg vol across coins for regime detection
     peak_price = {c: 0.0 for c in UNIVERSE}
     entry_price = {}
     current_longs = set()
@@ -277,19 +280,28 @@ def run_breakout_bot():
                     current_longs.discard(c)
                     last_exit[c] = global_tick
 
-            # ── CHECK ENTRIES ──
+            # ── REGIME DETECTION ──
+            avg_vol = sum(vol_pct[c] for c in UNIVERSE) / len(UNIVERSE)
+            vol_history.append(avg_vol)
+            if len(vol_history) > REGIME_WINDOW:
+                vol_history.pop(0)
+            smoothed_vol = sum(vol_history) / len(vol_history)
+            regime = "ACTIVE" if smoothed_vol >= REGIME_VOL_THRESH else "FLAT"
+
+            # ── CHECK ENTRIES (only in ACTIVE regime) ──
             breakout_candidates = []
-            for c in UNIVERSE:
-                if c in current_longs:
-                    continue
-                if (global_tick - last_exit.get(c, -COOLDOWN)) < COOLDOWN:
-                    continue
-                if vol_pct[c] < MIN_VOL:
-                    continue
-                if prices_now[c] > chan_high[c]:
-                    strength = ((prices_now[c] - chan_high[c]) / atr[c]
-                                if atr[c] > 0 else 0)
-                    breakout_candidates.append((c, strength))
+            if regime == "ACTIVE":
+                for c in UNIVERSE:
+                    if c in current_longs:
+                        continue
+                    if (global_tick - last_exit.get(c, -COOLDOWN)) < COOLDOWN:
+                        continue
+                    if vol_pct[c] < MIN_VOL:
+                        continue
+                    if prices_now[c] > chan_high[c]:
+                        strength = ((prices_now[c] - chan_high[c]) / atr[c]
+                                    if atr[c] > 0 else 0)
+                        breakout_candidates.append((c, strength))
 
             breakout_candidates.sort(key=lambda x: x[1], reverse=True)
             slots = TOP_K - len(current_longs)
@@ -385,7 +397,8 @@ def run_breakout_bot():
                     print(f"\n{'=' * 60}")
                     print(f"EQUITY: ${equity:,.2f} | P&L: {pnl:+.2f}% "
                           f"| DD: {dd:.1%} | Tick: {global_tick}")
-                    print(f"Holdings: {', '.join(sorted(current_longs)) if current_longs else 'ALL CASH'}")
+                    print(f"Holdings: {', '.join(sorted(current_longs)) if current_longs else 'ALL CASH'}"
+                          f" | Regime: {regime} (vol={smoothed_vol:.3%})")
                     print(f"{'=' * 60}\n")
             except Exception as e:
                 print(f"[RESYNC] Failed: {e}")

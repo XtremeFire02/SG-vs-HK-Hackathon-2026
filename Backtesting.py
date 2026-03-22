@@ -57,6 +57,8 @@ def backtest_breakout(period="7d", interval="1m", capital=50000.0, min_vol=0.000
     MIN_VOL        = min_vol # minimum ATR/price to allow entry
     PRICE_OFFSET   = 0.0002 # slippage
     COOLDOWN       = 20     # bars after a stop-out before re-entry for same coin
+    REGIME_VOL_THRESH = 0.0002  # avg vol must exceed this to allow entries
+    REGIME_WINDOW  = 10     # ticks to smooth vol for regime detection
 
     # ── State ──
     pos = {c: 0.0 for c in UNIVERSE}
@@ -65,6 +67,7 @@ def backtest_breakout(period="7d", interval="1m", capital=50000.0, min_vol=0.000
     cash = capital
     current_longs = set()
     last_exit = {c: -COOLDOWN for c in UNIVERSE}  # cooldown per coin
+    vol_history = []
 
     equity_curve = []
     trade_log = []
@@ -134,20 +137,28 @@ def backtest_breakout(period="7d", interval="1m", capital=50000.0, min_vol=0.000
                 current_longs.discard(c)
                 last_exit[c] = i
 
-        # ── Check entries ──
-        # Find coins breaking out with sufficient vol, not on cooldown
+        # ── Regime detection ──
+        avg_vol = sum(vol_pct[c] for c in UNIVERSE) / len(UNIVERSE)
+        vol_history.append(avg_vol)
+        if len(vol_history) > REGIME_WINDOW:
+            vol_history.pop(0)
+        smoothed_vol = sum(vol_history) / len(vol_history)
+        regime = "ACTIVE" if smoothed_vol >= REGIME_VOL_THRESH else "FLAT"
+
+        # ── Check entries (only in ACTIVE regime) ──
         breakout_candidates = []
-        for c in UNIVERSE:
-            if c in current_longs:
-                continue
-            if (i - last_exit.get(c, -COOLDOWN)) < COOLDOWN:
-                continue
-            if vol_pct[c] < MIN_VOL:
-                continue
-            if prices_now[c] > chan_high[c]:
-                # Breakout strength = how far above channel
-                strength = (prices_now[c] - chan_high[c]) / atr[c] if atr[c] > 0 else 0
-                breakout_candidates.append((c, strength))
+        if regime == "ACTIVE":
+            for c in UNIVERSE:
+                if c in current_longs:
+                    continue
+                if (i - last_exit.get(c, -COOLDOWN)) < COOLDOWN:
+                    continue
+                if vol_pct[c] < MIN_VOL:
+                    continue
+                if prices_now[c] > chan_high[c]:
+                    # Breakout strength = how far above channel
+                    strength = (prices_now[c] - chan_high[c]) / atr[c] if atr[c] > 0 else 0
+                    breakout_candidates.append((c, strength))
 
         # Rank by breakout strength, take top slots available
         breakout_candidates.sort(key=lambda x: x[1], reverse=True)
