@@ -47,7 +47,7 @@ def backtest_breakout(period="7d", interval="1m", capital=50000.0, min_vol=0.000
     print(f"  Aligned to {min_len} bars across {len(UNIVERSE)} coins\n")
 
     # ── Parameters ──
-    ENTRY_LB       = 96     # Donchian entry channel lookback
+    ENTRY_LB       = 120    # Donchian entry channel lookback — optimized via sweep
     EXIT_LB        = 48     # Donchian exit channel lookback (tighter)
     ATR_WIN        = 20     # ATR window
     TOP_K          = 2      # max simultaneous positions

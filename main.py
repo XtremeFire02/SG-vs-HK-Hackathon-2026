@@ -64,7 +64,7 @@ def run_breakout_bot():
 
     # ── Parameters ──
     UNIVERSE       = ["BTC", "ETH", "SOL", "BNB"]
-    ENTRY_LB       = 96     # Donchian entry channel lookback (~48 min at 30s ticks)
+    ENTRY_LB       = 120    # Donchian entry channel lookback (~60 min at 30s ticks) — optimized via sweep
     EXIT_LB        = 48     # Donchian exit channel lookback (tighter)
     ATR_WIN        = 20     # ATR window
     TOP_K          = 2      # max simultaneous positions
