@@ -76,7 +76,7 @@ def run_breakout_bot():
     PRICE_OFFSET   = 0.0002 # 0.02% limit price offset
     COOLDOWN       = 20     # ticks after stop-out before re-entry (~10 min)
     MIN_ORDER_USD  = 50.00  # minimum order notional
-    REGIME_VOL_THRESH = 0.0002  # avg vol across coins must exceed this to trade (0.02%) — optimized via sweep
+    REGIME_VOL_THRESH = 0.0005  # avg vol across coins must exceed this to trade (0.05%) — raised to filter flat noise
     REGIME_WINDOW  = 10     # how many ticks of vol history to average for regime
 
     # ── Circuit Breakers ──
@@ -84,9 +84,8 @@ def run_breakout_bot():
     MAX_DRAWDOWN_PCT    = 0.10   # kill switch if drawdown from peak exceeds 10%
     MAX_CONSECUTIVE_LOSSES = 5   # pause entries after 5 consecutive losing trades
 
-    # ── Order Verification ──
-    ORDER_VERIFY_DELAY  = 2      # seconds to wait before verifying order fill
-    ORDER_VERIFY_RETRIES = 3     # number of retries for order verification
+    # ── Pending Order Handling ──
+    PENDING_TIMEOUT_TICKS = 3    # ticks before re-placing an unfilled order at worse price
 
     # ── Stale Data Detection ──
     STALE_PRICE_TICKS   = 10     # alert if price unchanged for this many ticks
@@ -117,6 +116,8 @@ def run_breakout_bot():
     daily_start_equity = None                         # set on first equity calc
     circuit_breaker_active = False
     api_error_count = 0
+    pending_exits = {}     # coin -> {"trade_pnl": float, "tick": int} — awaiting fill confirmation
+    pending_entries = {}   # coin -> {"qty": float, "tick": int} — awaiting fill confirmation
 
     global_tick = 0
 
@@ -146,6 +147,53 @@ def run_breakout_bot():
                     current_longs.add(c)
     except Exception:
         pass
+
+    # ── Liquidate leftover positions from previous runs ──
+    leftovers_sold = False
+    for c in UNIVERSE:
+        if pos[c] > 0:
+            pair = f"{c}/USD"
+            prec = amt_precision.get(c, 4)
+            p_prec = price_precision.get(c, 2)
+            qty = round(pos[c], prec)
+            if qty > 0:
+                try:
+                    tk = client.get_ticker(pair)
+                    price_now = float(tk["Data"][pair]["LastPrice"])
+                    limit_price = round(price_now * (1 - PRICE_OFFSET), p_prec)
+                    qty_str = f"{qty:.{prec}f}"
+                    price_str = f"{limit_price:.{p_prec}f}"
+                    print(f"  [CLEANUP] Selling leftover {qty_str} {c} @ ${limit_price}")
+                    client.place_order(pair=pair, side="SELL",
+                                       quantity=qty_str, order_type="LIMIT",
+                                       price=price_str)
+                    leftovers_sold = True
+                    pos[c] = 0.0
+                    peak_price[c] = 0.0
+                    entry_price.pop(c, None)
+                    current_longs.discard(c)
+                except Exception as e:
+                    print(f"  [CLEANUP] Failed to sell {c}: {e}")
+
+    if leftovers_sold:
+        time.sleep(3)  # wait for orders to fill
+        # Re-sync balances after cleanup
+        try:
+            bal = client.get_balance()
+            wallet_key = "SpotWallet" if "SpotWallet" in bal else "Wallet"
+            usd_entry = bal[wallet_key].get("USD", {})
+            free_usd = usd_entry.get("Free", 0.0) + usd_entry.get("Locked", 0.0)
+            start_equity = free_usd
+            for c in UNIVERSE:
+                c_entry = bal[wallet_key].get(c, {})
+                pos[c] = c_entry.get("Free", 0.0) + c_entry.get("Locked", 0.0)
+                if pos[c] > 0:
+                    tk = client.get_ticker(f"{c}/USD")
+                    p = float(tk["Data"][f"{c}/USD"]["LastPrice"])
+                    start_equity += pos[c] * p
+            print(f"  [CLEANUP] Done. New starting equity: ${start_equity:,.2f}")
+        except Exception as e:
+            print(f"  [CLEANUP] Re-sync failed: {e}")
 
     equity = start_equity
     peak_equity = start_equity
@@ -206,21 +254,6 @@ def run_breakout_bot():
                 else:
                     raise
 
-    def verify_order(pair, side, expected_qty):
-        """Verify an order was filled by checking balance change."""
-        time.sleep(ORDER_VERIFY_DELAY)
-        for attempt in range(ORDER_VERIFY_RETRIES):
-            try:
-                result = client.query_order(pair)
-                if result:
-                    return True
-            except Exception:
-                pass
-            if attempt < ORDER_VERIFY_RETRIES - 1:
-                time.sleep(1)
-        print(f"  [WARN] Could not verify {side} order for {pair}")
-        return False
-
     def log_health():
         """Write a health check line to the health log."""
         with open(HEALTH_LOG_FILE, "a") as hf:
@@ -230,7 +263,7 @@ def run_breakout_bot():
                 "equity": equity,
                 "pnl_pct": (equity / start_equity - 1) * 100,
                 "positions": {c: pos[c] for c in UNIVERSE if pos[c] > 0},
-                "regime": regime if 'regime' in dir() else "WARMUP",
+                "regime": regime,
                 "circuit_breaker": circuit_breaker_active,
                 "consecutive_losses": consecutive_losses,
             }) + "\n")
@@ -248,8 +281,10 @@ def run_breakout_bot():
                 except Exception:
                     pass
 
-            # Cancel stale orders (with retry)
+            # Cancel stale orders — but NOT for coins with pending exit/entry orders
             for coin in UNIVERSE:
+                if coin in pending_exits or coin in pending_entries:
+                    continue
                 try:
                     api_call_with_retry(client.cancel_order, f"{coin}/USD")
                 except Exception:
@@ -338,6 +373,8 @@ def run_breakout_bot():
                 if pos[c] <= 0:
                     current_longs.discard(c)
                     continue
+                if c in pending_exits:
+                    continue  # already placed a sell, waiting for fill confirmation
 
                 stop_level = peak_price[c] - STOP_MULT * atr[c]
                 exit_channel = chan_low[c]
@@ -356,40 +393,45 @@ def run_breakout_bot():
                         price_str = f"{limit_price:.{p_prec}f}"
 
                         trade_pnl = 0.0
-                        pnl_trade = ""
                         ep = entry_price.get(c)
                         if ep and ep > 0:
                             trade_pnl = (prices_now[c] / ep - 1)
-                            pnl_trade = f" P&L: {trade_pnl*100:+.2f}%"
+                        pnl_str = f" P&L: {trade_pnl*100:+.2f}%" if ep else ""
 
                         print(f"  [{reason}] {c}: ${prices_now[c]:,.2f} <= "
-                              f"${exit_level:,.2f}{pnl_trade}")
+                              f"${exit_level:,.2f}{pnl_str}")
 
                         try:
                             api_call_with_retry(
                                 client.place_order, pair=pair, side="SELL",
                                 quantity=qty_str, order_type="LIMIT",
                                 price=price_str)
-                            print(f"    >> SELL-{reason} {qty_str} {c} @ ${limit_price}")
+                            print(f"    >> SELL-{reason} {qty_str} {c} @ ${limit_price} (pending fill)")
                             log_trade(c, f"SELL-{reason}", qty, prices_now[c],
                                       limit_price, atr[c], chan_high[c],
                                       chan_low[c], vol_pct[c])
-                            verify_order(pair, "SELL", qty)
 
-                            # Track consecutive losses for circuit breaker
-                            if trade_pnl <= 0:
-                                consecutive_losses += 1
-                            else:
-                                consecutive_losses = 0
+                            # Mark as pending — position cleared only after resync confirms fill
+                            pending_exits[c] = {
+                                "trade_pnl": trade_pnl,
+                                "tick": global_tick,
+                                "reason": reason,
+                            }
 
                         except Exception as e:
                             print(f"    >> SELL-{reason} {c} FAILED: {e}")
 
-                    pos[c] = 0.0
-                    peak_price[c] = 0.0
-                    entry_price.pop(c, None)
-                    current_longs.discard(c)
-                    last_exit[c] = global_tick
+            # ── Expire stale pending exits: cancel and re-place at worse price ──
+            for c in list(pending_exits):
+                age = global_tick - pending_exits[c]["tick"]
+                if age >= PENDING_TIMEOUT_TICKS:
+                    print(f"  [PENDING-EXPIRE] {c} exit unfilled after {age} ticks, canceling and retrying")
+                    try:
+                        client.cancel_order(f"{c}/USD")
+                    except Exception:
+                        pass
+                    del pending_exits[c]
+                    # Will re-trigger exit check next tick since coin is still in current_longs
 
             # ── REGIME DETECTION ──
             avg_vol = sum(vol_pct[c] for c in UNIVERSE) / len(UNIVERSE)
@@ -486,17 +528,34 @@ def run_breakout_bot():
                         client.place_order, pair=pair, side="BUY",
                         quantity=qty_str, order_type="LIMIT",
                         price=price_str)
-                    print(f"    >> BUY {qty_str} {c} @ ${limit_price}")
+                    print(f"    >> BUY {qty_str} {c} @ ${limit_price} (pending fill)")
                     log_trade(c, "BUY-BREAKOUT", qty, prices_now[c],
                               limit_price, atr[c], chan_high[c],
                               chan_low[c], vol_pct[c])
-                    verify_order(pair, "BUY", qty)
-                    pos[c] += qty
-                    entry_price[c] = prices_now[c]
-                    peak_price[c] = prices_now[c]
+
+                    # Mark as pending — resync will confirm fill from exchange balance
+                    pending_entries[c] = {
+                        "qty": qty,
+                        "price": prices_now[c],
+                        "tick": global_tick,
+                    }
+                    # Optimistically reserve the slot so we don't double-buy
                     current_longs.add(c)
+
                 except Exception as e:
                     print(f"    >> BUY {c} FAILED: {e}")
+
+            # ── Expire stale pending entries ──
+            for c in list(pending_entries):
+                age = global_tick - pending_entries[c]["tick"]
+                if age >= PENDING_TIMEOUT_TICKS:
+                    print(f"  [PENDING-EXPIRE] {c} entry unfilled after {age} ticks, canceling")
+                    try:
+                        client.cancel_order(f"{c}/USD")
+                    except Exception:
+                        pass
+                    current_longs.discard(c)
+                    del pending_entries[c]
 
             # ── Status display ──
             for c in sorted(UNIVERSE):
@@ -516,14 +575,72 @@ def run_breakout_bot():
                       f"${chan_high[c]:,.2f}] | vol={vol_pct[c]:.3%} "
                       f"{bo} | {status}{stop_info}{cd_info}{stale_tag}")
 
-            # ── Re-sync equity ──
+            # ── Re-sync equity & confirm pending fills ──
             try:
                 bal = api_call_with_retry(client.get_balance)
                 wallet_key = "SpotWallet" if "SpotWallet" in bal else "Wallet"
                 if wallet_key in bal:
                     for c in UNIVERSE:
-                        entry = bal[wallet_key].get(c, {})
-                        pos[c] = entry.get("Free", 0.0) + entry.get("Locked", 0.0)
+                        exchange_pos = bal[wallet_key].get(c, {})
+                        exchange_qty = exchange_pos.get("Free", 0.0) + exchange_pos.get("Locked", 0.0)
+
+                        # ── Confirm pending exit fills ──
+                        if c in pending_exits:
+                            if exchange_qty < 0.0001:  # position gone → sell filled
+                                info = pending_exits.pop(c)
+                                print(f"    >> [CONFIRMED] {c} exit filled")
+                                # Now safe to clear position state
+                                pos[c] = 0.0
+                                peak_price[c] = 0.0
+                                entry_price.pop(c, None)
+                                current_longs.discard(c)
+                                last_exit[c] = global_tick
+                                # Track consecutive losses
+                                if info["trade_pnl"] <= 0:
+                                    consecutive_losses += 1
+                                else:
+                                    consecutive_losses = 0
+                            else:
+                                # Still holding — sell not filled yet
+                                pos[c] = exchange_qty
+
+                        # ── Confirm pending entry fills ──
+                        elif c in pending_entries:
+                            if exchange_qty > 0.0001:  # got coins → buy filled
+                                info = pending_entries.pop(c)
+                                print(f"    >> [CONFIRMED] {c} entry filled ({exchange_qty:.6f})")
+                                pos[c] = exchange_qty
+                                entry_price[c] = info["price"]
+                                peak_price[c] = info["price"]
+                                # current_longs already has c (added optimistically)
+                            else:
+                                # No coins yet — buy not filled
+                                pos[c] = 0.0
+
+                        # ── Active tracked position ──
+                        elif c in current_longs:
+                            pos[c] = exchange_qty
+
+                        # ── Untracked dust cleanup ──
+                        elif exchange_qty > 0 and exchange_qty * prices_now[c] > MIN_ORDER_USD:
+                            pair = f"{c}/USD"
+                            prec = amt_precision.get(c, 4)
+                            p_prec = price_precision.get(c, 2)
+                            dust_qty = round(exchange_qty, prec)
+                            if dust_qty > 0:
+                                try:
+                                    limit_price = round(prices_now[c] * (1 - PRICE_OFFSET), p_prec)
+                                    qty_str = f"{dust_qty:.{prec}f}"
+                                    price_str = f"{limit_price:.{p_prec}f}"
+                                    client.place_order(pair=pair, side="SELL",
+                                                       quantity=qty_str, order_type="LIMIT",
+                                                       price=price_str)
+                                    print(f"  [DUST-CLEANUP] Sold {qty_str} {c} @ ${limit_price}")
+                                except Exception:
+                                    pass
+                            pos[c] = 0.0
+                        else:
+                            pos[c] = 0.0
 
                     usd_entry = bal[wallet_key].get("USD", {})
                     usd = usd_entry.get("Free", 0.0) + usd_entry.get("Locked", 0.0)
@@ -536,11 +653,16 @@ def run_breakout_bot():
 
                     cb_tag = " [CB-HALT]" if circuit_breaker_active else ""
                     loss_tag = f" losses={consecutive_losses}" if consecutive_losses > 0 else ""
+                    pending_tag = ""
+                    if pending_exits or pending_entries:
+                        pe = [f"{c}:exit" for c in pending_exits]
+                        pb = [f"{c}:buy" for c in pending_entries]
+                        pending_tag = f" | Pending: {', '.join(pe + pb)}"
                     print(f"\n{'=' * 60}")
                     print(f"EQUITY: ${equity:,.2f} | P&L: {pnl:+.2f}% "
                           f"| DD: {dd:.1%} | Tick: {global_tick}{cb_tag}")
                     print(f"Holdings: {', '.join(sorted(current_longs)) if current_longs else 'ALL CASH'}"
-                          f" | Regime: {regime} (vol={smoothed_vol:.3%}){loss_tag}")
+                          f" | Regime: {regime} (vol={smoothed_vol:.3%}){loss_tag}{pending_tag}")
                     print(f"{'=' * 60}\n")
             except Exception as e:
                 print(f"[RESYNC] Failed: {e}")
