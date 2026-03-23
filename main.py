@@ -71,13 +71,16 @@ def run_breakout_bot():
     TOP_K          = 4      # Allow holding all 4 coins if the market moves
     RISK_PER_TRADE = 0.01   # risk 1% of equity per trade
     MAX_ALLOC      = 0.24   # 4 positions * 24% = 96% utilization
-    STOP_MULT      = 2.0    # trailing stop = peak - STOP_MULT * ATR
+    STOP_MULT      = 3.0    # trailing stop = peak - STOP_MULT * ATR (wider to survive noise)
     MIN_VOL        = 0.00005 # minimum ATR/price to allow entry — optimized via sweep
     PRICE_OFFSET   = 0.0002 # 0.02% limit price offset
-    COOLDOWN       = 20     # ticks after stop-out before re-entry (~10 min)
+    COOLDOWN       = 60     # ticks after stop-out before re-entry (~30 min) — prevents whipsaw re-entry
     MIN_ORDER_USD  = 50.00  # minimum order notional
-    REGIME_VOL_THRESH = 0.0005  # avg vol across coins must exceed this to trade (0.05%) — raised to filter flat noise
-    REGIME_WINDOW  = 10     # how many ticks of vol history to average for regime
+    MIN_BREAKOUT_STR = 0.5  # minimum breakout strength (ATR units above channel) — filters weak breakouts
+    CONFIRM_TICKS  = 2      # price must stay above channel for N ticks before entry (confirms breakout)
+    PROFIT_TARGET  = 2.0    # take profit at PROFIT_TARGET * ATR above entry
+    REGIME_VOL_THRESH = 0.001  # avg vol across coins must exceed this to trade (0.1%) — strict filter for real trends
+    REGIME_WINDOW  = 20     # how many ticks of vol history to average for regime (smooths noise)
 
     # ── Circuit Breakers ──
     MAX_DAILY_LOSS_PCT  = 0.05   # halt trading if daily loss exceeds 5%
@@ -118,6 +121,7 @@ def run_breakout_bot():
     api_error_count = 0
     pending_exits = {}     # coin -> {"trade_pnl": float, "tick": int} — awaiting fill confirmation
     pending_entries = {}   # coin -> {"qty": float, "tick": int} — awaiting fill confirmation
+    breakout_confirm = {c: 0 for c in UNIVERSE}  # ticks price has been above channel high
 
     global_tick = 0
 
@@ -380,58 +384,111 @@ def run_breakout_bot():
                 exit_channel = chan_low[c]
                 exit_level = max(stop_level, exit_channel)
 
-                if prices_now[c] <= exit_level:
+                # ── Profit target: take profit at PROFIT_TARGET * ATR above entry ──
+                ep = entry_price.get(c)
+                profit_hit = False
+                if ep and ep > 0 and atr[c] > 0:
+                    target_price = ep + PROFIT_TARGET * atr[c]
+                    if prices_now[c] >= target_price:
+                        profit_hit = True
+
+                if profit_hit:
+                    reason = "PROFIT-TARGET"
+                elif prices_now[c] <= exit_level:
                     reason = "STOP" if prices_now[c] <= stop_level else "CHAN-EXIT"
-                    pair = f"{c}/USD"
-                    prec = amt_precision.get(c, 4)
-                    p_prec = price_precision.get(c, 2)
-                    qty = round(pos[c], prec)
+                else:
+                    continue  # no exit signal
 
-                    if qty > 0:
-                        limit_price = round(prices_now[c] * (1 - PRICE_OFFSET), p_prec)
-                        qty_str = f"{qty:.{prec}f}"
-                        price_str = f"{limit_price:.{p_prec}f}"
+                pair = f"{c}/USD"
+                prec = amt_precision.get(c, 4)
+                p_prec = price_precision.get(c, 2)
+                qty = round(pos[c], prec)
 
-                        trade_pnl = 0.0
-                        ep = entry_price.get(c)
-                        if ep and ep > 0:
-                            trade_pnl = (prices_now[c] / ep - 1)
-                        pnl_str = f" P&L: {trade_pnl*100:+.2f}%" if ep else ""
+                # ── Dust position: too small to sell — abandon it ──
+                if qty > 0 and qty * prices_now[c] < MIN_ORDER_USD:
+                    trade_pnl = 0.0
+                    ep = entry_price.get(c)
+                    if ep and ep > 0:
+                        trade_pnl = (prices_now[c] / ep - 1)
+                    pnl_str = f" P&L: {trade_pnl*100:+.2f}%" if ep else ""
+                    print(f"  [DUST-ABANDON] {c}: {qty} units (${qty * prices_now[c]:.2f}) "
+                          f"below min order ${MIN_ORDER_USD}{pnl_str} — removing from tracking")
+                    pos[c] = 0.0
+                    peak_price[c] = 0.0
+                    entry_price.pop(c, None)
+                    current_longs.discard(c)
+                    last_exit[c] = global_tick
+                    if trade_pnl <= 0:
+                        consecutive_losses += 1
+                    else:
+                        consecutive_losses = 0
+                    continue
 
+                if qty > 0:
+                    limit_price = round(prices_now[c] * (1 - PRICE_OFFSET), p_prec)
+                    qty_str = f"{qty:.{prec}f}"
+                    price_str = f"{limit_price:.{p_prec}f}"
+
+                    trade_pnl = 0.0
+                    ep = entry_price.get(c)
+                    if ep and ep > 0:
+                        trade_pnl = (prices_now[c] / ep - 1)
+                    pnl_str = f" P&L: {trade_pnl*100:+.2f}%" if ep else ""
+
+                    if reason == "PROFIT-TARGET":
+                        print(f"  [{reason}] {c}: ${prices_now[c]:,.2f} >= "
+                              f"${target_price:,.2f}{pnl_str}")
+                    else:
                         print(f"  [{reason}] {c}: ${prices_now[c]:,.2f} <= "
                               f"${exit_level:,.2f}{pnl_str}")
 
-                        try:
-                            api_call_with_retry(
-                                client.place_order, pair=pair, side="SELL",
-                                quantity=qty_str, order_type="LIMIT",
-                                price=price_str)
-                            print(f"    >> SELL-{reason} {qty_str} {c} @ ${limit_price} (pending fill)")
-                            log_trade(c, f"SELL-{reason}", qty, prices_now[c],
-                                      limit_price, atr[c], chan_high[c],
-                                      chan_low[c], vol_pct[c])
+                    try:
+                        api_call_with_retry(
+                            client.place_order, pair=pair, side="SELL",
+                            quantity=qty_str, order_type="LIMIT",
+                            price=price_str)
+                        print(f"    >> SELL-{reason} {qty_str} {c} @ ${limit_price} (pending fill)")
+                        log_trade(c, f"SELL-{reason}", qty, prices_now[c],
+                                  limit_price, atr[c], chan_high[c],
+                                  chan_low[c], vol_pct[c])
 
-                            # Mark as pending — position cleared only after resync confirms fill
-                            pending_exits[c] = {
-                                "trade_pnl": trade_pnl,
-                                "tick": global_tick,
-                                "reason": reason,
-                            }
+                        # Mark as pending — position cleared only after resync confirms fill
+                        pending_exits[c] = {
+                            "trade_pnl": trade_pnl,
+                            "tick": global_tick,
+                            "reason": reason,
+                        }
 
-                        except Exception as e:
-                            print(f"    >> SELL-{reason} {c} FAILED: {e}")
+                    except Exception as e:
+                        print(f"    >> SELL-{reason} {c} FAILED: {e}")
 
             # ── Expire stale pending exits: cancel and re-place at worse price ──
             for c in list(pending_exits):
                 age = global_tick - pending_exits[c]["tick"]
                 if age >= PENDING_TIMEOUT_TICKS:
-                    print(f"  [PENDING-EXPIRE] {c} exit unfilled after {age} ticks, canceling and retrying")
                     try:
                         client.cancel_order(f"{c}/USD")
                     except Exception:
                         pass
-                    del pending_exits[c]
-                    # Will re-trigger exit check next tick since coin is still in current_longs
+
+                    # If position is dust, abandon instead of retrying
+                    pos_value = pos[c] * prices_now.get(c, 0)
+                    if pos_value < MIN_ORDER_USD:
+                        info = pending_exits.pop(c)
+                        print(f"  [PENDING-EXPIRE] {c} exit unfilled — dust position (${pos_value:.2f}), abandoning")
+                        pos[c] = 0.0
+                        peak_price[c] = 0.0
+                        entry_price.pop(c, None)
+                        current_longs.discard(c)
+                        last_exit[c] = global_tick
+                        if info["trade_pnl"] <= 0:
+                            consecutive_losses += 1
+                        else:
+                            consecutive_losses = 0
+                    else:
+                        print(f"  [PENDING-EXPIRE] {c} exit unfilled after {age} ticks, canceling and retrying")
+                        del pending_exits[c]
+                        # Will re-trigger exit check next tick since coin is still in current_longs
 
             # ── REGIME DETECTION ──
             avg_vol = sum(vol_pct[c] for c in UNIVERSE) / len(UNIVERSE)
@@ -467,6 +524,13 @@ def run_breakout_bot():
                     print(f"  [CIRCUIT-BREAKER] Conditions cleared — resuming entries")
                 circuit_breaker_active = False
 
+            # ── UPDATE BREAKOUT CONFIRMATION COUNTERS ──
+            for c in UNIVERSE:
+                if prices_now[c] > chan_high[c]:
+                    breakout_confirm[c] += 1
+                else:
+                    breakout_confirm[c] = 0
+
             # ── CHECK ENTRIES (only in ACTIVE regime + no circuit breaker) ──
             breakout_candidates = []
             if regime == "ACTIVE" and not circuit_breaker_active:
@@ -477,10 +541,11 @@ def run_breakout_bot():
                         continue
                     if vol_pct[c] < MIN_VOL:
                         continue
-                    if prices_now[c] > chan_high[c]:
+                    if breakout_confirm[c] >= CONFIRM_TICKS:
                         strength = ((prices_now[c] - chan_high[c]) / atr[c]
                                     if atr[c] > 0 else 0)
-                        breakout_candidates.append((c, strength))
+                        if strength >= MIN_BREAKOUT_STR:
+                            breakout_candidates.append((c, strength))
 
             breakout_candidates.sort(key=lambda x: x[1], reverse=True)
             slots = TOP_K - len(current_longs)

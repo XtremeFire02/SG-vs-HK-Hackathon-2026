@@ -18,3 +18,31 @@
 {"ts": "2026-03-23T01:36:20.550392+00:00", "tick": 60, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
 {"ts": "2026-03-23T02:10:34.982533+00:00", "tick": 120, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
 {"ts": "2026-03-23T02:23:17.586806+00:00", "tick": 141, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T02:57:12.833140+00:00", "tick": 60, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T03:31:25.115832+00:00", "tick": 120, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T04:06:04.864542+00:00", "tick": 180, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T04:40:44.047770+00:00", "tick": 240, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T05:15:35.253501+00:00", "tick": 300, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T05:50:10.104129+00:00", "tick": 360, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T06:24:43.469434+00:00", "tick": 420, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T06:59:20.993399+00:00", "tick": 480, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T07:33:55.310097+00:00", "tick": 540, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T08:08:34.643574+00:00", "tick": 600, "equity": 966210.94, "pnl_pct": -0.2256411540055514, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 3}
+{"ts": "2026-03-23T08:43:14.690279+00:00", "tick": 660, "equity": 963825.1254990001, "pnl_pct": -0.47200879724786926, "positions": {"ETH": 0.0001}, "regime": "FLAT", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T09:17:35.891721+00:00", "tick": 720, "equity": 963825.1244590001, "pnl_pct": -0.4720089046419407, "positions": {"ETH": 0.0001}, "regime": "FLAT", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T09:51:58.019201+00:00", "tick": 780, "equity": 963825.123965, "pnl_pct": -0.47200895565413514, "positions": {"ETH": 0.0001}, "regime": "ACTIVE", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T10:26:30.493130+00:00", "tick": 840, "equity": 963825.124494, "pnl_pct": -0.47200890102773174, "positions": {"ETH": 0.0001}, "regime": "FLAT", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T11:01:05.682925+00:00", "tick": 900, "equity": 963825.1250690001, "pnl_pct": -0.4720088416511836, "positions": {"ETH": 0.0001}, "regime": "FLAT", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T11:35:44.106737+00:00", "tick": 960, "equity": 963825.1370730001, "pnl_pct": -0.4720076020756969, "positions": {"ETH": 0.0001}, "regime": "ACTIVE", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T12:10:12.851361+00:00", "tick": 1020, "equity": 963825.132306, "pnl_pct": -0.4720080943329763, "positions": {"ETH": 0.0001}, "regime": "ACTIVE", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T12:44:37.816383+00:00", "tick": 1080, "equity": 963825.134484, "pnl_pct": -0.4720078694249952, "positions": {"ETH": 0.0001}, "regime": "ACTIVE", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T12:54:23.009067+00:00", "tick": 1096, "equity": 963825.1345370001, "pnl_pct": -0.47200786395201755, "positions": {"ETH": 0.0001}, "regime": "ACTIVE", "circuit_breaker": true, "consecutive_losses": 6}
+{"ts": "2026-03-23T14:35:29.858783+00:00", "tick": 60, "equity": 963825.1390910001, "pnl_pct": 0.0, "positions": {"ETH": 0.0001}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T15:09:44.640863+00:00", "tick": 120, "equity": 963825.1390910001, "pnl_pct": 0.0, "positions": {"ETH": 0.0001}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T15:44:31.358583+00:00", "tick": 180, "equity": 963824.92, "pnl_pct": -2.2731405435738594e-05, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T16:19:16.241390+00:00", "tick": 240, "equity": 963824.92, "pnl_pct": -2.2731405435738594e-05, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T16:54:01.117688+00:00", "tick": 300, "equity": 963824.92, "pnl_pct": -2.2731405435738594e-05, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T17:28:38.609259+00:00", "tick": 360, "equity": 963824.92, "pnl_pct": -2.2731405435738594e-05, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T18:03:22.633228+00:00", "tick": 420, "equity": 963824.92, "pnl_pct": -2.2731405435738594e-05, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T18:38:01.967233+00:00", "tick": 480, "equity": 963824.92, "pnl_pct": -2.2731405435738594e-05, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T19:12:47.722910+00:00", "tick": 540, "equity": 963824.92, "pnl_pct": -2.2731405435738594e-05, "positions": {}, "regime": "FLAT", "circuit_breaker": false, "consecutive_losses": 0}
