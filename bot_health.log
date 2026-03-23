@@ -1,0 +1,20 @@
+{"ts": "2026-03-22T15:44:35.827881+00:00", "tick": 60, "equity": 980162.3112023, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T16:18:46.422208+00:00", "tick": 120, "equity": 980162.3112023, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T16:53:27.607620+00:00", "tick": 180, "equity": 980162.311869, "pnl_pct": 6.80193457114342e-08, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T17:28:26.623734+00:00", "tick": 240, "equity": 979152.5775238, "pnl_pct": -0.10301698677451787, "positions": {"ETH": 112.8059}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T18:03:04.974750+00:00", "tick": 300, "equity": 978725.954, "pnl_pct": -0.14654279050355656, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-22T18:37:43.767159+00:00", "tick": 360, "equity": 978725.9555736, "pnl_pct": -0.14654262995871248, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-22T19:12:25.720154+00:00", "tick": 420, "equity": 978725.955283, "pnl_pct": -0.14654265960686308, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-22T19:47:04.071842+00:00", "tick": 480, "equity": 978725.9562817, "pnl_pct": -0.14654255771557878, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-22T20:22:02.777004+00:00", "tick": 540, "equity": 977560.5472406, "pnl_pct": -0.26544215503538915, "positions": {"ETH": 113.3953, "BNB": 373.44}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 3}
+{"ts": "2026-03-22T20:56:45.163000+00:00", "tick": 600, "equity": 976903.7883001, "pnl_pct": -0.3324472758193475, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T21:31:29.642415+00:00", "tick": 660, "equity": 976903.7924476999, "pnl_pct": -0.3324468526649471, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T22:06:16.245317+00:00", "tick": 720, "equity": 976903.7917201, "pnl_pct": -0.33244692689754496, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T22:41:25.487611+00:00", "tick": 780, "equity": 977141.35411, "pnl_pct": -0.3082098809323197, "positions": {"SOL": 0.001}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-22T23:16:38.980090+00:00", "tick": 840, "equity": 973571.2620958, "pnl_pct": -0.6724446585193777, "positions": {"BTC": 3.42018, "BNB": 370.988}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-22T23:51:21.461252+00:00", "tick": 900, "equity": 971190.6789722, "pnl_pct": -0.9153210776993714, "positions": {"BTC": 3.42018, "BNB": 370.988}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-23T00:26:07.824111+00:00", "tick": 960, "equity": 971520.7728868, "pnl_pct": -0.8816436029763342, "positions": {"BTC": 3.42018, "BNB": 370.988}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-23T00:59:47.610517+00:00", "tick": 1017, "equity": 969519.2450084001, "pnl_pct": -1.0858473206182384, "positions": {"BTC": 3.42018, "BNB": 370.988}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 1}
+{"ts": "2026-03-23T01:36:20.550392+00:00", "tick": 60, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T02:10:34.982533+00:00", "tick": 120, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "WARMUP", "circuit_breaker": false, "consecutive_losses": 0}
+{"ts": "2026-03-23T02:23:17.586806+00:00", "tick": 141, "equity": 968396.04, "pnl_pct": 0.0, "positions": {}, "regime": "ACTIVE", "circuit_breaker": false, "consecutive_losses": 0}
