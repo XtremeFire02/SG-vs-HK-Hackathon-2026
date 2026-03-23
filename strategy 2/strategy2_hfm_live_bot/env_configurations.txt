@@ -1,0 +1,61 @@
+# ------------------------------
+# Roostoo API selection
+# ------------------------------
+ROOSTOO_MODE=TEST
+ROOSTOO_TEST_BASE_URL=https://mock-api.roostoo.com
+ROOSTOO_LIVE_BASE_URL=
+
+
+ROOSTOO_TEST_API_KEY=4oOxrNzFlR0WeeTn7AKh5GYKJN0WRLdl7ieqS0R3AjWsvlvsw000SopuRxSoLTSi
+ROOSTOO_TEST_SECRET_KEY=TfOIrsiSWzyoJVVEKkddmbaO0eKpImRfKln7wHG4Tt4wB8ZXxzSvHff74D2b0sAE
+ROOSTOO_LIVE_API_KEY=gTXINb11mK9CQimJU3U9fZ4DsNCDyQhsa33TPHC3PglMJHlG8J9NkkzGF1SyabvJ
+ROOSTOO_LIVE_SECRET_KEY=wa5wyNtXuwj482sSAjhnDGwSLEYsPV1qqtWbwNqTcVsI0KM1PcsVFRcdLaOjLYt7
+
+ROOSTOO_TIMEOUT_SECONDS=10
+ROOSTOO_MAX_RETRIES=3
+ROOSTOO_RETRY_BACKOFF_SECONDS=0.5
+
+# ------------------------------
+# Binance public market data
+# ------------------------------
+BINANCE_BASE_URL=https://data-api.binance.vision
+BINANCE_INTERVAL=1h
+BINANCE_TIMEOUT_SECONDS=20
+BINANCE_PAUSE_SECONDS=0.0
+BINANCE_QUOTE_PRIORITY=USDT,FDUSD,USDC,TUSD,BUSD,USDP
+
+# Optional JSON mapping if a Roostoo pair does not map cleanly to Binance.
+# Example:
+# BINANCE_SYMBOL_OVERRIDES_JSON={"FLOKI/USD":"FLOKIUSDT"}
+BINANCE_SYMBOL_OVERRIDES_JSON={}
+
+# ------------------------------
+# Strategy 2 live parameters
+# ------------------------------
+ACTIVE_COINS=FLOKI/USD,NEAR/USD,PEPE/USD,SHIB/USD
+BET_SIZE_USD=2500
+CASH_RESERVE_USD=25000
+SIGNAL_THRESHOLD=0.5
+
+EMA_SHORT_N=8,16,32
+EMA_LONG_N=24,48,96
+SHORT_NORM_HOURS=12
+LONG_NORM_HOURS=168
+ROLLING_STD_DDOF=1
+EXTRA_WARMUP_HOURS=0
+
+# ------------------------------
+# Bot runtime mode
+# ------------------------------
+EXECUTE_TRADES=true
+RUN_FOREVER=true
+BAR_CLOSE_DELAY_SECONDS=10
+LOOP_POLL_SECONDS=5
+ESTIMATED_FEE_RATE=0.001
+BALANCE_EPSILON=1e-12
+USD_ASSET=USD
+
+# ------------------------------
+# Logging
+# ------------------------------
+LIVE_LOG_JSONL_PATH=strategy2_hfm_live_log.jsonl

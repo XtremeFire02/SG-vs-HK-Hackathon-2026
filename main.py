@@ -8,10 +8,12 @@ from datetime import datetime, timezone
 from dotenv import load_dotenv
 load_dotenv()
 
-from roostoo_client import RoostooClient
+# API_KEY = os.getenv("API_KEY")
+# SECRET = os.getenv("SECRET")
 
-API_KEY = os.getenv("API_KEY")
-SECRET = os.getenv("SECRET")
+API_KEY = "gTXINb11mK9CQimJU3U9fZ4DsNCDyQhsa33TPHC3PglMJHlG8J9NkkzGF1SyabvJ"
+SECRET = "wa5wyNtXuwj482sSAjhnDGwSLEYsPV1qqtWbwNqTcVsI0KM1PcsVFRcdLaOjLYt7"
+BASE_URL = "https://mock-api.roostoo.com"
 
 client = RoostooClient(api_key=API_KEY, secret_key=SECRET)
 
