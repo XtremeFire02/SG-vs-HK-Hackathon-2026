@@ -1,0 +1,437 @@
+\documentclass[11pt,a4paper]{article}
+
+% ----------------------------------------------------------------------------
+%  Research Story: Evolution of a Crypto Trading Strategy
+%  SG vs HK Hackathon 2026 -- Strategy 1
+%
+%  Compile with:  pdflatex research_story.tex   (run twice for the ToC/refs)
+% ----------------------------------------------------------------------------
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{xcolor}
+\usepackage{graphicx}
+\usepackage{enumitem}
+\usepackage{listings}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{codebg}{rgb}{0.96,0.96,0.96}
+\definecolor{accent}{rgb}{0.10,0.30,0.55}
+
+\lstset{
+  basicstyle=\ttfamily\footnotesize,
+  backgroundcolor=\color{codebg},
+  breaklines=true,
+  frame=single,
+  framesep=4pt,
+  columns=fullflexible,
+  showstringspaces=false,
+}
+
+\newcommand{\param}[1]{\texttt{#1}}
+\newcommand{\code}[1]{\texttt{#1}}
+
+\title{\textbf{Don't Predict, React:}\\[2pt]
+       \large The Research Evolution of a Regime-Aware\\ Crypto Momentum Strategy}
+\author{Strategy 1 --- SG vs HK Hackathon 2026\\[2pt]
+        \small \texttt{<Your Name / Team>}}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\noindent
+This report documents the full research journey behind ``Strategy 1,'' an
+algorithmic trading bot built for the Roostoo mock-exchange during the SG~vs~HK
+2026 hackathon. The strategy was not designed in one shot; it emerged through
+five distinct phases, each one forced by a concrete, observed failure of its
+predecessor. We began with the most intuitive prior --- mean reversion --- and
+progressively discovered that the edge in crypto markets is fundamentally
+\emph{regime-dependent}. The path runs: (1)~mean reversion, (2)~mean reversion
+with rolling linear-regression detrending, (3)~an inversion to momentum via
+volatility breakout, (4)~a regime-switching ensemble that unifies both views,
+and finally (5)~a deliberate simplification to gated breakout-momentum hardened
+with institutional-grade risk controls. We present the hypothesis, mechanics,
+mathematics, and failure mode of each phase, and conclude with the final
+production specification.
+\end{abstract}
+
+\tableofcontents
+\bigskip
+
+% ============================================================================
+\section{Introduction}
+% ============================================================================
+
+\subsection{The problem}
+The objective was to build a fully automated trading bot that grows a
+\$50{,}000 paper portfolio on the Roostoo mock exchange, trading a small
+universe of liquid spot pairs (\code{BTC}, \code{ETH}, \code{SOL}, \code{BNB})
+against \code{USD}. The bot polls live prices on a $\sim$30-second cycle, places
+\code{LIMIT} orders through a signed REST API, and must survive unattended for
+extended periods without human intervention.
+
+This imposes three constraints that shaped every design decision:
+\begin{enumerate}[noitemsep]
+  \item \textbf{No look-ahead.} Decisions at tick $t$ may only use information
+        available up to and including $t$.
+  \item \textbf{Capital preservation first.} A blown-up bot scores zero. Drawdown
+        control is not optional polish --- it is a primary objective.
+  \item \textbf{Robustness over cleverness.} The bot trades unsupervised, so every
+        edge case (stale prices, partial fills, API errors) must be handled
+        mechanically.
+\end{enumerate}
+
+\subsection{Research philosophy}
+Rather than search for a single ``magic'' indicator, we treated the project as a
+sequence of falsifiable hypotheses. Each strategy was a bet about \emph{how crypto
+prices behave}; we deployed it, observed where it broke, and let that failure
+dictate the next hypothesis. The result is a narrative of
+\emph{thesis $\rightarrow$ antithesis $\rightarrow$ synthesis $\rightarrow$
+refinement}, summarised in Table~\ref{tab:journey}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Phase} & \textbf{Hypothesis} & \textbf{Mechanism} & \textbf{Why we moved on} \\
+\midrule
+1. Mean reversion       & Prices snap back to a mean      & $Z$-score on rolling mean        & Trends run it over \\
+2. MR + linear reg.     & The mean \emph{drifts}          & $Z$-score on regression residual & Still structurally short trend \\
+3. Momentum (breakout)  & Ride proven moves               & Donchian + trailing ATR stop     & Wins in trends, idle in chop \\
+4. Regime ensemble      & Pick the right tool per regime  & BB-width switch: MR $\leftrightarrow$ momentum & Complex; MR leg was weak \\
+5. Gated momentum       & Momentum, but only when it pays & Breakout + regime on/off gate    & \textbf{Final} \\
+\bottomrule
+\end{tabular}
+\caption{The five-phase research journey for Strategy 1.}
+\label{tab:journey}
+\end{table}
+
+\noindent
+\textit{Scope note.} This document covers \textbf{Strategy 1} only --- the
+breakout/momentum lineage authored for this project. A separate
+\code{strategy 2/} module (an EWMA high-frequency-momentum signal) was contributed
+independently by a teammate and is outside the scope of this narrative; it is
+discussed briefly in Appendix~\ref{app:strat2} for completeness.
+
+% ============================================================================
+\section{Phase 1 --- Mean Reversion: The Naive Prior}
+% ============================================================================
+
+\subsection{Hypothesis}
+The most intuitive starting point: over short horizons, crypto prices
+\emph{overreact} and then revert toward a local fair value. If so, we should buy
+when price is unusually low relative to its recent average and sell when it is
+unusually high.
+
+\subsection{Mechanics}
+Let $P_t$ be the price and $\mu_t,\sigma_t$ the rolling mean and standard
+deviation over a window $W$:
+\begin{equation}
+  \mu_t = \frac{1}{W}\sum_{i=0}^{W-1} P_{t-i}, \qquad
+  \sigma_t = \sqrt{\frac{1}{W}\sum_{i=0}^{W-1}\bigl(P_{t-i}-\mu_t\bigr)^2}.
+\end{equation}
+We then form the standardized deviation (a $Z$-score) and trade its extremes:
+\begin{equation}
+  Z_t = \frac{P_t - \mu_t}{\sigma_t},\qquad
+  \text{signal}_t =
+  \begin{cases}
+    \text{BUY}  & Z_t < -z^{*}\\
+    \text{SELL} & Z_t > +z^{*}\\
+    \text{HOLD} & \text{otherwise.}
+  \end{cases}
+\end{equation}
+
+\subsection{What we learned}
+Crypto \textbf{trends hard}. A flat rolling mean lags a directional move, so the
+$Z$-score stays negative all the way down a sell-off --- the strategy keeps issuing
+BUY signals into a falling market, ``catching a falling knife'' and averaging into
+losers. Mean reversion implicitly assumes a stationary mean; crypto violates that
+assumption precisely when it matters most. This failure motivated Phase~2: if the
+mean is the problem, model the mean better.
+
+% ============================================================================
+\section{Phase 2 --- Mean Reversion with Rolling Linear Regression}
+% ============================================================================
+
+\subsection{Hypothesis}
+The Phase~1 failure had a clear diagnosis: the ``mean'' is not flat, it
+\emph{drifts}. By fitting a local trend line and measuring deviations from
+\emph{that} line (rather than from a flat average), we should be able to keep the
+mean-reversion logic while accounting for short-term drift.
+
+\subsection{Mechanics}
+Over a lookback of $L=60$ bars we fit an ordinary least-squares trend line,
+regressing price on time $\tau$:
+\begin{equation}
+  \hat{P}_\tau = \hat\alpha + \hat\beta\,\tau,
+  \qquad
+  (\hat\alpha,\hat\beta) = \arg\min_{\alpha,\beta}\sum_{\tau=t-L+1}^{t}\bigl(P_\tau-\alpha-\beta\tau\bigr)^2 .
+\end{equation}
+The \emph{residual} is the part of price the local trend does \emph{not} explain:
+\begin{equation}
+  r_t = P_t - \hat{P}_t,\qquad
+  Z_t = \frac{r_t}{\sigma_r},\quad
+  \sigma_r = \operatorname{std}\bigl(r_{t-L+1:t}\bigr).
+\end{equation}
+We trade the residual $Z$-score and, crucially, add \textbf{position management}:
+the size scales with the magnitude of the dislocation, so we add more as the
+price strays further from the regression line.
+
+\subsection{What we learned}
+Detrending helped at the margin but did not fix the core defect. Mean reversion is
+\emph{structurally short trend}: it profits only if the dislocation closes. In a
+genuine directional regime the residual keeps widening in the same direction, and
+the ``add more as it strays'' rule amplifies the loss. The decisive insight emerged
+here: \textbf{the edge is regime-dependent.} Fading moves works in ranging markets
+and is actively dangerous in trending ones. If fighting trends loses money, perhaps
+we should do the opposite.
+
+% ============================================================================
+\section{Phase 3 --- Momentum via Volatility Breakout: The Inversion}
+% ============================================================================
+
+\subsection{Hypothesis}
+We flipped the thesis. Instead of betting that moves reverse, bet that
+\emph{proven} moves \emph{continue}. Do nothing until the market commits to a
+direction; then ride it with a stop that lets winners run and cuts losers
+mechanically.
+
+\subsection{Mechanics}
+\paragraph{Donchian channel.} Define the entry and exit channels from the
+trailing highs/lows (excluding the current bar) over lookbacks
+$\param{ENTRY\_LB}=120$ and $\param{EXIT\_LB}=48$:
+\begin{equation}
+  H_t = \max\bigl(P_{t-\param{ENTRY\_LB}}, \dots, P_{t-1}\bigr),\qquad
+  L_t = \min\bigl(P_{t-\param{EXIT\_LB}}, \dots, P_{t-1}\bigr).
+\end{equation}
+\paragraph{Volatility (ATR proxy).} A mean-absolute-change estimate over
+$\param{ATR\_WIN}=20$ bars:
+\begin{equation}
+  \mathrm{ATR}_t = \frac{1}{\param{ATR\_WIN}}\sum_{i=1}^{\param{ATR\_WIN}}\bigl|P_{t-i+1}-P_{t-i}\bigr|.
+\end{equation}
+\paragraph{Entry.} Go long when price breaks the upper channel, but only after
+three confirmations stack up:
+\begin{align}
+  &\text{(i) breakout:}    && P_t > H_t \text{ for } \param{CONFIRM\_TICKS}=2 \text{ consecutive ticks};\\
+  &\text{(ii) strength:}   && \frac{P_t - H_t}{\mathrm{ATR}_t} \ge \param{MIN\_BREAKOUT\_STR}=0.5;\\
+  &\text{(iii) vol gate:}  && \frac{\mathrm{ATR}_t}{P_t} \ge \param{MIN\_VOL}.
+\end{align}
+\paragraph{Exit.} A position is closed at the highest of a trailing stop or the
+exit channel, or at a profit target:
+\begin{equation}
+  \text{stop}_t = \text{peak} - \param{STOP\_MULT}\cdot\mathrm{ATR}_t,\quad
+  \text{target}_t = P_{\text{entry}} + \param{PROFIT\_TARGET}\cdot\mathrm{ATR}_t,
+\end{equation}
+with $\param{STOP\_MULT}=3.0$ and $\param{PROFIT\_TARGET}=2.0$.
+
+\subsection{Why this is elegant}
+In flat or choppy markets, price never clears the channel: \textbf{zero trades,
+zero loss}. The breakout strategy is therefore \emph{naturally defensive in
+exactly the chop regime where mean reversion also struggled} --- but for the
+opposite reason. We had now covered the two opposing regimes with two opposing
+tools.
+
+% ============================================================================
+\section{Phase 4 --- Regime Conditioning: The Synthesis}
+% ============================================================================
+
+\subsection{Hypothesis}
+We now possessed two strategies, each winning in one regime and losing in the
+other: mean reversion in ranges, momentum in trends. The natural synthesis is a
+system that \emph{detects} the prevailing regime and deploys the appropriate tool.
+
+\subsection{Mechanics}
+\paragraph{Regime detector.} We use Bollinger-band width --- the spread of the
+bands relative to their mean --- as a trend/range classifier over
+$\param{REGIME\_WIN}=20$ bars:
+\begin{equation}
+  \mathrm{BBwidth}_t = \frac{4\,\sigma_t}{\mu_t},\qquad
+  \text{regime} =
+  \begin{cases}
+    \text{TREND} & \mathrm{BBwidth}_t > \param{BREAKOUT\_THRESH}=0.025\\
+    \text{RANGE} & \text{otherwise.}
+  \end{cases}
+\end{equation}
+The raw width is smoothed by an EMA to prevent the bot from thrashing between
+regimes on noise.
+\paragraph{Trending branch (momentum).} EMA crossover $\mathrm{EMA}_5 >
+\mathrm{EMA}_{20}$ sets direction, gated by an RSI overbought filter and a
+``BTC must also be trending up'' market filter.
+\paragraph{Ranging branch (mean reversion).} Bollinger-band position sizing,
+$w = (\text{upper}-P)/(\text{upper}-\text{lower})$, with an RSI confluence
+requirement near the lower band and a minimum-bandwidth gate so we only fade when
+the band is wide enough to cover costs.
+\paragraph{Risk overlay.} Volatility targeting, drawdown-based de-sizing, per-coin
+exposure caps, and trade cooldowns sit on top of both branches.
+
+\subsection{What we learned}
+The ensemble worked, but it carried two costs: \emph{complexity} (two full
+strategies, a switch, and many parameters --- a real overfitting risk on limited
+data) and the empirical observation that the \emph{mean-reversion leg was the
+weaker half}. The momentum branch and the regime gate were doing most of the work.
+
+% ============================================================================
+\section{Phase 5 --- Gated Momentum: Refinement and Hardening}
+% ============================================================================
+
+\subsection{Hypothesis}
+Having \emph{earned} the complexity of the full ensemble, we earned the right to
+cut it back. Keep the part that works --- breakout momentum --- and demote the
+regime detector from a \emph{switch} to an \emph{on/off gate}: trade momentum only
+when the volatility regime confirms a real trend; otherwise sit in cash.
+
+\subsection{Mechanics}
+\paragraph{Regime gate.} Average the per-coin volatility across the universe and
+smooth it over $\param{REGIME\_WINDOW}=20$ ticks:
+\begin{equation}
+  \overline{v}_t = \frac{1}{N}\sum_{c=1}^{N}\frac{\mathrm{ATR}^{(c)}_t}{P^{(c)}_t},\qquad
+  \text{regime} =
+  \begin{cases}
+    \text{ACTIVE} & \widetilde{v}_t \ge \param{REGIME\_VOL\_THRESH}=0.001\\
+    \text{FLAT}   & \text{otherwise (no new entries).}
+  \end{cases}
+\end{equation}
+\paragraph{Risk-parity sizing.} Every trade risks a fixed fraction of equity. With
+$\param{RISK\_PER\_TRADE}=1\%$ and the stop distance $\param{STOP\_MULT}\cdot
+\mathrm{ATR}$, the quantity is
+\begin{equation}
+  q = \min\!\left(
+        \frac{E \cdot \param{RISK\_PER\_TRADE}}{\param{STOP\_MULT}\cdot \mathrm{ATR}_t},\;
+        \frac{E \cdot \param{MAX\_ALLOC}}{P_t}
+      \right),
+\end{equation}
+where $E$ is current equity and $\param{MAX\_ALLOC}=24\%$ caps per-coin exposure.
+\paragraph{Cross-sectional selection.} Among confirmed breakouts, rank by breakout
+strength and hold up to $\param{TOP\_K}=4$ positions, preferring the strongest.
+
+\subsection{The final architecture}
+This is the production bot (\code{main.py}). It is, in one sentence:
+\emph{a cross-sectional Donchian breakout system that only trades in confirmed
+high-volatility regimes, sizes by risk parity, and exits via trailing ATR stops,
+channel breaks, or profit targets --- wrapped in circuit breakers.}
+
+% ============================================================================
+\section{Final Strategy Specification}
+% ============================================================================
+
+\subsection{Signal and execution pipeline}
+Each $\sim$30s tick the bot:
+\begin{enumerate}[noitemsep]
+  \item cancels stale orders and fetches fresh prices (with retry/backoff);
+  \item runs stale-data detection (skips trading if prices are frozen);
+  \item updates price history, ATR, Donchian channels, and trailing peaks;
+  \item \textbf{checks exits first} (stops/channel/target) --- always, even when entries are halted;
+  \item evaluates the regime gate and circuit breakers;
+  \item checks confirmed-breakout entries and sizes them by risk parity;
+  \item reconciles pending fills against the exchange balance and reports equity/P\&L.
+\end{enumerate}
+
+\subsection{Parameters}
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}llp{7.2cm}@{}}
+\toprule
+\textbf{Parameter} & \textbf{Value} & \textbf{Role} \\
+\midrule
+\param{ENTRY\_LB}           & 120     & Donchian entry-channel lookback \\
+\param{EXIT\_LB}            & 48      & Donchian exit-channel lookback (tighter) \\
+\param{ATR\_WIN}            & 20      & Volatility (ATR) window \\
+\param{TOP\_K}              & 4       & Max simultaneous positions \\
+\param{RISK\_PER\_TRADE}    & 1\%     & Equity risked per trade \\
+\param{MAX\_ALLOC}          & 24\%    & Per-coin exposure cap \\
+\param{STOP\_MULT}          & 3.0     & Trailing stop $=$ peak $-$ STOP\_MULT$\times$ATR \\
+\param{PROFIT\_TARGET}      & 2.0     & Take profit at entry $+$ 2$\times$ATR \\
+\param{MIN\_BREAKOUT\_STR}  & 0.5     & Min breakout strength (ATR units) \\
+\param{CONFIRM\_TICKS}      & 2       & Ticks above channel before entry \\
+\param{COOLDOWN}            & 60      & Ticks after stop-out before re-entry \\
+\param{REGIME\_VOL\_THRESH} & 0.001   & Avg vol needed for ACTIVE regime \\
+\param{REGIME\_WINDOW}      & 20      & Smoothing window for regime vol \\
+\bottomrule
+\end{tabular}
+\caption{Final production parameters (\code{main.py}).}
+\label{tab:params}
+\end{table}
+
+\subsection{Risk management}
+Capital preservation is enforced by a layered set of mechanical controls:
+\begin{itemize}[noitemsep]
+  \item \textbf{Circuit breakers:} halt new entries on $>5\%$ daily loss,
+        $>10\%$ drawdown from peak, or $5$ consecutive losing trades.
+  \item \textbf{Trailing ATR stop \& profit target:} bound each trade's downside
+        and lock in gains.
+  \item \textbf{Risk-parity sizing:} every trade risks the same $1\%$ of equity.
+  \item \textbf{Re-entry cooldown:} prevents whipsaw re-entry after a stop-out.
+  \item \textbf{Operational safety:} pending-fill reconciliation, stale-price
+        detection, dust handling, API retry with exponential backoff, and a
+        graceful-shutdown handler with final state logging.
+\end{itemize}
+
+% ============================================================================
+\section{Results}
+% ============================================================================
+\noindent
+\textit{Populate this section with your own backtest output. The narrative above
+is the skeleton; these numbers are the proof. Suggested table:}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{@{}lccc@{}}
+\toprule
+\textbf{Phase / Strategy} & \textbf{Total Return} & \textbf{Sharpe} & \textbf{Max Drawdown} \\
+\midrule
+1. Mean reversion              & \texttt{<--->} & \texttt{<--->} & \texttt{<--->} \\
+2. MR + linear regression      & \texttt{<--->} & \texttt{<--->} & \texttt{<--->} \\
+3. Volatility breakout         & \texttt{<--->} & \texttt{<--->} & \texttt{<--->} \\
+4. Regime ensemble             & \texttt{<--->} & \texttt{<--->} & \texttt{<--->} \\
+5. Gated momentum (final)      & \texttt{<--->} & \texttt{<--->} & \texttt{<--->} \\
+\bottomrule
+\end{tabular}
+\caption{Backtest comparison across phases (to be filled in).}
+\end{table}
+
+\noindent
+For the breakout family, \code{Backtesting.py} provides a walk-forward harness on
+historical 1-minute data; reported figures in development included Sharpe ratios of
+$+18.76$ (7d), $+5.80$ (1mo), and $+1.75$ (60d) windows. \emph{Verify and update
+these against your final run before publishing.}
+
+% ============================================================================
+\section{Lessons Learned}
+% ============================================================================
+\begin{enumerate}[noitemsep]
+  \item \textbf{The market regime is the real variable.} No single strategy is
+        universally right; mean reversion and momentum are two halves of one
+        regime-conditional whole.
+  \item \textbf{Negative results are load-bearing.} The failures of Phases 1--2
+        are what \emph{justified} the momentum inversion and the regime work. We
+        kept them in the story rather than hiding them.
+  \item \textbf{Earn your complexity, then cut it.} We built the full ensemble,
+        learned which part carried the edge, and simplified back to a gated
+        momentum core --- more robust and less prone to overfitting.
+  \item \textbf{For an unsupervised bot, risk plumbing \emph{is} the strategy.}
+        Half the final code is circuit breakers, fill reconciliation, and error
+        recovery, because a bot that blows up or hangs scores nothing.
+\end{enumerate}
+
+% ============================================================================
+\appendix
+\section{Note on Strategy 2}
+\label{app:strat2}
+The \code{strategy 2/} directory contains an independent module
+(\code{strategy2\_hfm}) contributed by a teammate. It implements an academic
+high-frequency-momentum signal: for several EMA pairs it computes a MACD-style
+crossover $x=\mathrm{EMA}_{\text{short}}-\mathrm{EMA}_{\text{long}}$, normalises it
+twice (by short- and long-horizon volatility) to obtain a $z$-score, and passes it
+through a bounded nonlinear response $u = z\,e^{-z^2/4}/(\sqrt{2}\,e^{-1/2})$ that
+\emph{attenuates} extreme readings. The components are averaged into a single
+long/cash signal and backtested across $\sim$90 coins with hourly rebalancing,
+next-bar execution, fees, and slippage. It is documented here only to delineate the
+boundary of Strategy~1; it is not part of the research lineage described above.
+
+\end{document}
